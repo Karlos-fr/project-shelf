@@ -44,6 +44,13 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
   const [pageHidden, setPageHidden] = useState(false);
   const [leaseGranted, setLeaseGranted] = useState(false);
   const [fallbackPoster, setFallbackPoster] = useState(false);
+  const [soundOn, setSoundOn] = useState(false);
+  const [fullscreen, setFullscreen] = useState(false);
+  const soundOnRef = useRef(false);
+  const activeIndexRef = useRef(0);
+  const programmaticScrollRef = useRef(false);
+  const scrollSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const userPausedRef = useRef(true);
   const sectionRef = useRef<HTMLElement>(null);
   const slidesRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -51,6 +58,7 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
   const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = projects[state.active];
+  userPausedRef.current = state.userPaused;
   const messages = MESSAGES[route.locale];
   const locale = route.locale;
   const hasRotation = projects.length > 1;
@@ -125,9 +133,18 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
     }
     const video = videoRef.current;
     if (project.preview.video !== undefined && !fallbackPoster && !reducedMotion && video !== null) {
-      video.muted = true;
-      void tryPlay(video).then((played) => {
-        if (!played) setFallbackPoster(true);
+      // Le son reste celui choisi par le visiteur ; si le navigateur refuse la
+      // lecture sonore, on repart en muet plutôt que d'abandonner la vidéo.
+      video.muted = !soundOnRef.current;
+      void tryPlay(video).then(async (result) => {
+        if (result === 'playing') return;
+        if (!video.muted) {
+          video.muted = true;
+          soundOnRef.current = false;
+          setSoundOn(false);
+          if ((await tryPlay(video)) === 'playing') return;
+        }
+        setFallbackPoster(true);
       });
       stallTimerRef.current = setTimeout(() => setFallbackPoster(true), MEDIA_STALL_MS);
       return;
@@ -188,12 +205,31 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
     return () => clearInterval(timer);
   }, [active, playsVideo]);
 
-  // Sur téléphone, une rotation automatique fait défiler la piste jusqu'au projet actif.
+  // Applique le choix du son à la vidéo active, y compris aux projets suivants.
   useEffect(() => {
+    soundOnRef.current = soundOn;
+    const video = videoRef.current;
+    if (video !== null) video.muted = !soundOn;
+  }, [soundOn, active?.id, playsVideo]);
+
+  // Reflète l'entrée et la sortie du plein écran (bouton, Échap ou geste système).
+  useEffect(() => {
+    // Met à jour l'état selon l'élément réellement affiché en plein écran.
+    function syncFullscreen(): void { setFullscreen(document.fullscreenElement !== null && document.fullscreenElement === sectionRef.current); }
+    document.addEventListener('fullscreenchange', syncFullscreen);
+    return () => document.removeEventListener('fullscreenchange', syncFullscreen);
+  }, []);
+
+  // Sur téléphone, un bouton ou une rotation automatique fait défiler la piste
+  // jusqu'au projet actif. Ce défilement est marqué pour ne pas être pris pour un
+  // glissement du visiteur, qui ramènerait aussitôt la piste en arrière.
+  useEffect(() => {
+    activeIndexRef.current = state.active;
     const track = slidesRef.current;
     if (track === null || track.scrollWidth <= track.clientWidth) return;
     const slide = track.children[state.active] as HTMLElement | undefined;
     if (slide === undefined || Math.abs(track.scrollLeft - slide.offsetLeft + track.offsetLeft) < 4) return;
+    programmaticScrollRef.current = true;
     track.scrollTo({ left: slide.offsetLeft - track.offsetLeft, behavior: reducedMotion ? 'auto' : 'smooth' });
   }, [state.active, reducedMotion]);
 
@@ -218,6 +254,14 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
   // Sélectionne un projet manuellement et désactive la reprise implicite.
   function selectProject(index: number): void { dispatch({ type: 'manual', index }); }
 
+  // Va à un projet par les flèches ou au doigt : la vidéo du projet choisi joue,
+  // et seule une pause demandée avec le bouton pause reste en place.
+  function goToProject(index: number): void {
+    const wasPaused = userPausedRef.current;
+    dispatch({ type: 'manual', index });
+    if (!wasPaused) dispatch({ type: 'resume' });
+  }
+
   // Le survol d'un titre change la scène sans figer la rotation de l'utilisateur.
   function previewProject(index: number): void {
     if (index === state.active) return;
@@ -229,18 +273,54 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
   // Bascule la pause utilisateur, distincte des suspensions externes.
   function toggleRotation(): void { dispatch({ type: state.userPaused ? 'resume' : 'pause' }); }
 
-  // Le glissement au doigt choisit la diapositive la plus visible.
+  // Le glissement au doigt choisit la diapositive la plus visible, une fois le
+  // défilement arrêté ; un défilement lancé par les boutons est ignoré.
   function handleTrackScroll(event: UIEvent<HTMLDivElement>): void {
     const track = event.currentTarget;
     if (track.scrollWidth <= track.clientWidth) return;
-    const slides = [...track.children] as HTMLElement[];
-    let closest = 0;
-    let distance = Infinity;
-    slides.forEach((slide, index) => {
-      const gap = Math.abs(slide.offsetLeft - track.offsetLeft - track.scrollLeft);
-      if (gap < distance) { distance = gap; closest = index; }
-    });
-    if (closest !== state.active && distance < track.clientWidth / 3) selectProject(closest);
+    if (scrollSettleRef.current !== null) clearTimeout(scrollSettleRef.current);
+    scrollSettleRef.current = setTimeout(() => {
+      scrollSettleRef.current = null;
+      if (programmaticScrollRef.current) { programmaticScrollRef.current = false; return; }
+      const slides = [...track.children] as HTMLElement[];
+      let closest = 0;
+      let distance = Infinity;
+      slides.forEach((slide, index) => {
+        const gap = Math.abs(slide.offsetLeft - track.offsetLeft - track.scrollLeft);
+        if (gap < distance) { distance = gap; closest = index; }
+      });
+      if (closest !== activeIndexRef.current) goToProject(closest);
+    }, 140);
+  }
+
+  // Active ou coupe le son ; relance la lecture si elle était arrêtée par le navigateur.
+  function toggleSound(): void {
+    const next = !soundOn;
+    soundOnRef.current = next;
+    setSoundOn(next);
+    const video = videoRef.current;
+    if (video === null) return;
+    video.muted = !next;
+    if (video.paused && !state.userPaused) void tryPlay(video);
+  }
+
+  // Passe la scène en plein écran, ou ouvre le lecteur système quand le navigateur
+  // ne sait mettre qu'une vidéo en plein écran (iPhone).
+  function toggleFullscreen(): void {
+    const section = sectionRef.current;
+    if (section === null) return;
+    if (document.fullscreenElement !== null && document.fullscreenElement !== undefined) {
+      void document.exitFullscreen().catch(() => undefined);
+      return;
+    }
+    const video = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+    // Ouvre le lecteur vidéo natif, seule option sur iPhone.
+    function enterVideoFullscreen(): void { video?.webkitEnterFullscreen?.(); }
+    if (document.fullscreenEnabled && typeof section.requestFullscreen === 'function') {
+      void section.requestFullscreen().catch(enterVideoFullscreen);
+      return;
+    }
+    enterVideoFullscreen();
   }
 
   if (active === undefined) return null;
@@ -304,12 +384,28 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
           );
         })}
       </ol>
-      {hasRotation && (
-        <div className="featured-stage__controls">
+      <div className="featured-stage__controls">
+        {hasRotation && (
           <ol className="featured-stage__dots" aria-hidden="true">
             {projects.map((project, index) => <li key={project.id} className={index === state.active ? 'is-active' : undefined} />)}
           </ol>
-          <button type="button" onClick={() => selectProject(state.active - 1)} aria-label={messages.previousProject} data-nav="">
+        )}
+        {playsVideo && (
+          <button type="button" onClick={toggleSound} aria-label={soundOn ? messages.soundOff : messages.soundOn} aria-pressed={soundOn} data-nav="">
+            {soundOn
+              ? <svg viewBox="0 0 16 16" aria-hidden="true"><path className="is-filled" d="M2 6h2.5L8 3v10L4.5 10H2z" /><path d="M10.5 5.5a3.5 3.5 0 0 1 0 5M12.5 3.5a6.3 6.3 0 0 1 0 9" /></svg>
+              : <svg viewBox="0 0 16 16" aria-hidden="true"><path className="is-filled" d="M2 6h2.5L8 3v10L4.5 10H2z" /><path d="m10.5 6 4 4m0-4-4 4" /></svg>}
+          </button>
+        )}
+        {playsVideo && (
+          <button type="button" onClick={toggleFullscreen} aria-label={fullscreen ? messages.exitFullscreen : messages.fullscreen} data-nav="">
+            {fullscreen
+              ? <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2v4H2M10 2v4h4M6 14v-4H2M10 14v-4h4" /></svg>
+              : <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" /></svg>}
+          </button>
+        )}
+        {hasRotation && (<>
+          <button type="button" onClick={() => goToProject(state.active - 1)} aria-label={messages.previousProject} data-nav="">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5" /></svg>
           </button>
           <button type="button" onClick={toggleRotation} aria-label={state.userPaused ? messages.resumeRotation : messages.pauseRotation} data-nav="">
@@ -317,11 +413,11 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
               ? <svg viewBox="0 0 16 16" aria-hidden="true"><path className="is-filled" d="M4.5 2.5v11l9-5.5z" /></svg>
               : <svg viewBox="0 0 16 16" aria-hidden="true"><path className="is-filled" d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" /></svg>}
           </button>
-          <button type="button" onClick={() => selectProject(state.active + 1)} aria-label={messages.nextProject} data-nav="">
+          <button type="button" onClick={() => goToProject(state.active + 1)} aria-label={messages.nextProject} data-nav="">
             <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2.5 11 8l-5.5 5.5" /></svg>
           </button>
-        </div>
-      )}
+        </>)}
+      </div>
     </section>
   );
 
