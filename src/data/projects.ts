@@ -131,7 +131,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/Quake-2-JS',
       hidden: false,
       featured: true,
-      featuredOrder: 3,
+      featuredOrder: 2,
       stack: ['TypeScript', 'Three.js', 'WebGPU / WebGL', 'Vite', 'Web Audio API', 'GitHub Pages'],
       // La bannière du dépôt sert de poster et la présentation de vidéo d'aperçu.
       preview: {
@@ -226,7 +226,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/lactea',
       hidden: false,
       featured: true,
-      featuredOrder: 2,
+      featuredOrder: 4,
       stack: ['Kotlin', 'Android TV / Google TV', 'C++ (JNI)', 'projectM 4.1.8 (fork)', 'OpenGL ES 3', 'Android NDK', 'CMake', 'Python'],
       // La démo complète sert aussi de vidéo d'aperçu, comme pour Proscenium.
       preview: {
@@ -322,7 +322,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/proscenium',
       hidden: false,
       featured: true,
-      featuredOrder: 4,
+      featuredOrder: 5,
       stack: ['Java', 'Android SDK', 'Android TV / Google TV', 'aapt2 / d8 / apksigner', 'TMDB API', 'Open-Meteo', 'Python'],
       preview: {
         poster: `${PROSCENIUM_RAW}/images/banner.png`,
@@ -410,7 +410,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/la-mine-aux-diamants-to8-web',
       hidden: false,
       featured: true,
-      featuredOrder: 5,
+      featuredOrder: 3,
       stack: ['TypeScript', 'Vite', 'Canvas 2D', 'Three.js (WebGL)', 'Web Audio API', 'Node.js', 'GitHub Pages'],
       // L'écran titre sert de poster, la présentation d'une minute de vidéo d'aperçu.
       preview: {
