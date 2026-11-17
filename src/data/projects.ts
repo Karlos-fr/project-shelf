@@ -35,7 +35,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       featured: true,
       featuredOrder: 1,
       stack: ['TypeScript', 'Three.js', 'WebGPU / WebGL', 'Vite', 'Web Audio API', 'GitHub Pages'],
-      // Poster provisoire : la bannière du dépôt, en attendant le poster de jeu 16:9.
+      // La bannière du dépôt sert de poster et la présentation de vidéo d'aperçu.
       preview: {
         poster: `${QUAKE2JS_RAW}/docs/assets/quake2js-banner.png`,
         video: `${QUAKE2JS_RAW}/video/quake2js-presentation.mp4`,
