@@ -78,12 +78,12 @@ main { padding: .25rem 0 3rem; }
 .featured-stage__index { position: absolute; z-index: 2; left: var(--gutter); right: 34%; bottom: clamp(1.5rem, 5vh, 3rem); display: grid; gap: .2rem; margin: 0; padding: 0; list-style: none; }
 .featured-title { display: block; padding: .1rem 0; color: inherit; text-decoration: none; }
 .featured-title__name {
-  display: block; font-size: clamp(3rem, 7.2vw, 7rem); line-height: .9; letter-spacing: -.035em;
-  font-weight: 300; font-stretch: 75%; color: rgb(242 241 238 / 34%);
-  transition: font-stretch .6s var(--ease-out), font-weight .6s var(--ease-out), color .4s ease;
+  display: block; font-size: clamp(1.6rem, 3vw, 2.9rem); line-height: .95; letter-spacing: -.02em;
+  font-weight: 300; font-stretch: 75%; color: rgb(242 241 238 / 40%);
+  transition: font-size .6s var(--ease-out), font-stretch .6s var(--ease-out), font-weight .6s var(--ease-out), color .4s ease;
 }
 .featured-title:hover .featured-title__name { color: rgb(242 241 238 / 70%); }
-.featured-title[aria-current="true"] .featured-title__name { font-weight: 760; font-stretch: 125%; color: var(--text); }
+.featured-title[aria-current="true"] .featured-title__name { font-size: clamp(2.8rem, 6.4vw, 6.25rem); line-height: .9; letter-spacing: -.035em; font-weight: 760; font-stretch: 125%; color: var(--text); }
 .featured-title__meta { display: grid; grid-template-rows: 0fr; transition: grid-template-rows .5s var(--ease-out); }
 .featured-title[aria-current="true"] .featured-title__meta { grid-template-rows: 1fr; }
 .featured-title__meta > span { overflow: hidden; min-width: 0; min-height: 0; }
