@@ -31,7 +31,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       featured: true,
       featuredOrder: 1,
       stack: ['Kotlin', 'Android TV / Google TV', 'C++ (JNI)', 'projectM 4.1.8 (fork)', 'OpenGL ES 3', 'Android NDK', 'CMake', 'Python'],
-      // La démo complète sert d'aperçu en attendant une boucle courte dédiée.
+      // La démo complète sert aussi de vidéo d'aperçu, comme pour Proscenium.
       preview: {
         poster: `${LACTEA_RAW}/logos/lactea-v2-banner.png`,
         video: `${LACTEA_RAW}/video/lactea-demo.mp4`,
