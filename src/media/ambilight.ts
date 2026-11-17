@@ -12,7 +12,8 @@ export type Rgb = { r: number; g: number; b: number };
 // Hôtes connus pour servir leurs fichiers avec Access-Control-Allow-Origin: *.
 // Un autre hôte garde sa vidéo, mais sans Ambilight : poser crossOrigin sur un
 // média non CORS empêcherait purement son chargement.
-const CORS_HOSTS = [/(^|\.)raw\.githubusercontent\.com$/u, /(^|\.)github\.io$/u];
+// media.githubusercontent.com sert les fichiers stockés avec Git LFS.
+const CORS_HOSTS = [/(^|\.)raw\.githubusercontent\.com$/u, /(^|\.)media\.githubusercontent\.com$/u, /(^|\.)github\.io$/u];
 
 // ----------------------------------------------------------------------------
 // Indique si l'image d'un média pourra être lue par un canevas.

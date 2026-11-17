@@ -12,6 +12,10 @@ const FUN_TRACKS_RAW = 'https://raw.githubusercontent.com/Karlos-fr/fun-tracks-r
 const QUAKE2JS_RAW = 'https://raw.githubusercontent.com/Karlos-fr/Quake-2-JS/master';
 const LACTEA_RAW = 'https://raw.githubusercontent.com/Karlos-fr/lactea/main';
 const PROSCENIUM_RAW = 'https://raw.githubusercontent.com/Karlos-fr/proscenium/main';
+const MINE_RAW = 'https://raw.githubusercontent.com/Karlos-fr/la-mine-aux-diamants-to8-web/main';
+// Les vidéos de La Mine aux Diamants sont dans Git LFS : raw.githubusercontent.com
+// ne renvoie que le fichier pointeur, le contenu est servi par media.githubusercontent.com.
+const MINE_LFS = 'https://media.githubusercontent.com/media/Karlos-fr/la-mine-aux-diamants-to8-web/main';
 
 // Catalogue de production ; les fixtures de test vivent dans tests/.
 export const PROJECT_CATALOGUE: Catalogue = {
@@ -20,6 +24,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
     { id: 'games-ports', label: { en: 'Games & Ports', fr: 'Jeux et portages' } },
     { id: 'web', label: { en: 'Web', fr: 'Web' } },
     { id: 'reverse-engineering', label: { en: 'Reverse engineering', fr: 'Rétro-ingénierie' } },
+    { id: 'retro-computing', label: { en: 'Retro Computing', fr: 'Rétro-informatique' } },
   ],
   projects: [
     {
@@ -126,7 +131,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/Quake-2-JS',
       hidden: false,
       featured: true,
-      featuredOrder: 2,
+      featuredOrder: 3,
       stack: ['TypeScript', 'Three.js', 'WebGPU / WebGL', 'Vite', 'Web Audio API', 'GitHub Pages'],
       // La bannière du dépôt sert de poster et la présentation de vidéo d'aperçu.
       preview: {
@@ -221,7 +226,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/lactea',
       hidden: false,
       featured: true,
-      featuredOrder: 3,
+      featuredOrder: 2,
       stack: ['Kotlin', 'Android TV / Google TV', 'C++ (JNI)', 'projectM 4.1.8 (fork)', 'OpenGL ES 3', 'Android NDK', 'CMake', 'Python'],
       // La démo complète sert aussi de vidéo d'aperçu, comme pour Proscenium.
       preview: {
@@ -392,6 +397,119 @@ export const PROJECT_CATALOGUE: Catalogue = {
         },
       },
       application: { category: 'MultimediaApplication', operatingSystems: ['Android TV'] },
+      indexable: true,
+    },
+    {
+      id: 'la-mine-aux-diamants-web',
+      name: 'La Mine aux Diamants',
+      categories: ['games-ports', 'retro-computing'],
+      createdAt: '2026-06-02',
+      updatedAt: '2026-11-17',
+      status: 'active',
+      repositoryVisibility: 'public',
+      repositoryUrl: 'https://github.com/Karlos-fr/la-mine-aux-diamants-to8-web',
+      hidden: false,
+      featured: true,
+      featuredOrder: 5,
+      stack: ['TypeScript', 'Vite', 'Canvas 2D', 'Three.js (WebGL)', 'Web Audio API', 'Node.js', 'GitHub Pages'],
+      // L'écran titre sert de poster, la présentation d'une minute de vidéo d'aperçu.
+      preview: {
+        poster: `${MINE_RAW}/docs/screenshots/screen-title.png`,
+        video: `${MINE_LFS}/video/presentation-1min.mp4`,
+      },
+      media: [
+        {
+          type: 'video',
+          src: `${MINE_LFS}/video/presentation-1min.mp4`,
+          poster: `${MINE_RAW}/docs/screenshots/screen-title.png`,
+          title: { en: 'One-minute overview', fr: 'Présentation en 1 minute' },
+          description: {
+            en: 'A quick tour of the port: gameplay, options, 3D mode, showcase, editors.',
+            fr: 'Tour rapide du portage : niveaux en jeu, options, mode 3D, vitrine, éditeurs.',
+          },
+          durationSeconds: 61,
+          uploadDate: '2026-11-17',
+          width: 1920,
+          height: 1080,
+        },
+        {
+          type: 'video',
+          src: `${MINE_LFS}/docs/videos/2026-06-12%2016-53-44.mp4`,
+          poster: `${MINE_RAW}/docs/screenshots/level-01.png`,
+          title: { en: 'Demo', fr: 'Démonstration' },
+          description: {
+            en: 'Extended in-browser gameplay demonstration.',
+            fr: 'Démonstration longue du jeu dans le navigateur.',
+          },
+          durationSeconds: 277,
+          uploadDate: '2026-06-12',
+          width: 1920,
+          height: 1080,
+        },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/screen-title.png`, alt: { en: 'Title screen: the miner holding a diamond', fr: 'Écran titre : le mineur tient un diamant' }, width: 1280, height: 800 },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/level-01.png`, alt: { en: 'Gallery 01 in play with the TO8 HUD', fr: 'Galerie 01 en jeu avec le HUD TO8' }, width: 1280, height: 800 },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/diorama-3d.png`, alt: { en: 'A level rendered as a 3D diorama', fr: 'Un niveau rendu en diorama 3D' }, width: 1280, height: 800 },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/options-display.png`, alt: { en: 'Options panel, Display tab', fr: 'Panneau d\'options, onglet Affichage' }, width: 880, height: 498 },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/showcase.png`, alt: { en: 'Level showcase with previews', fr: 'Vitrine des niveaux avec aperçus' }, width: 1280, height: 800 },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/editor.png`, alt: { en: 'Built-in level editor', fr: 'Éditeur de niveaux intégré' }, width: 1280, height: 800 },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/character-editor.png`, alt: { en: 'Character color editor', fr: 'Éditeur de couleurs du personnage' }, width: 1280, height: 720 },
+        { type: 'image', src: `${MINE_RAW}/docs/screenshots/level-generator.png`, alt: { en: 'Experimental level generator', fr: 'Générateur de niveaux expérimental' }, width: 1280, height: 800 },
+      ],
+      links: [
+        { type: 'demo', url: 'https://karlos-fr.github.io/la-mine-aux-diamants-to8-web/' },
+        { type: 'documentation', url: 'https://github.com/Karlos-fr/la-mine-aux-diamants-to8-web#readme' },
+      ],
+      content: {
+        en: {
+          tagline: 'The 1986 Thomson TO8 game, ported pixel-close to TypeScript and playable in the browser.',
+          description: 'A modern port of La Mine aux Diamants, published by Infogrames in 1986 for the Thomson TO8. Graphics, levels, fonts and sounds were extracted or rebuilt from the original binaries and an analysis of the 6809 assembly. The gameplay is then reproduced tile by tile in a modern TypeScript architecture. Besides the TO8-faithful rendering, the project offers a true 3D diorama mode, a level editor, a level generator and a character editor.',
+          features: [
+            'Infogrames splash and animated title screen with its music',
+            'Original attract/demo mode with its decoded hidden level',
+            'Tile-based engine: rocks, diamonds, monsters, special creature, transformer block, gravity, explosions',
+            'Original levels decoded from the floppy disk',
+            'TO8 HUD: score, time, high score, gallery, goal',
+            'Options panel: zoom, stretch, density, smooth movement',
+            'Diorama TO8 mode in true 3D (Three.js), purely visual',
+            'Level showcase with animated previews',
+            'Built-in JSON level editor',
+            'Seeded procedural level generator',
+            'Free-color character editor',
+          ],
+          limitations: [
+            'Timing is not yet perfectly matched to the TO8.',
+            'Some behaviors remain hypotheses until the assembly analysis settles them.',
+            'Level progression and unlocking are not wired in yet.',
+            'The level generator is still experimental.',
+          ],
+          about: 'A preservation project around a classic of 1980s French home computing. The goal is to play the game as it was, documenting every choice from the original sources, then give it modern tools. Rights to the original game remain with their respective owners.',
+        },
+        fr: {
+          tagline: 'Le jeu Thomson TO8 de 1986, porté au plus près du pixel en TypeScript et jouable dans le navigateur.',
+          description: 'Portage moderne de La Mine aux Diamants, publié par Infogrames en 1986 sur Thomson TO8. Les graphismes, les niveaux, les polices et les sons ont été extraits ou reconstruits à partir des binaires et de l\'analyse de l\'ASM 6809 d\'origine. Le gameplay est ensuite reproduit case par case dans une architecture TypeScript moderne. En plus du rendu fidèle au TO8, le projet propose un mode diorama en vraie 3D, un éditeur de niveaux, un générateur de niveaux et un éditeur de personnage.',
+          features: [
+            'Écran Infogrames, écran titre animé avec sa musique',
+            'Mode démo (attract) d\'origine, avec son niveau caché décodé',
+            'Moteur case par case : rochers, diamants, monstres, créature spéciale, bloc transformateur, gravité, explosions',
+            'Niveaux originaux décodés depuis la disquette',
+            'HUD TO8 : score, temps, record, galerie, objectif',
+            'Panneau d\'options : zoom, étirage, densité, mouvements fluides',
+            'Mode Diorama TO8 en vraie 3D (Three.js), purement visuel',
+            'Vitrine des niveaux avec aperçus animés',
+            'Éditeur de niveaux JSON intégré',
+            'Générateur de niveaux à partir d\'une graine (seed)',
+            'Éditeur de personnage aux couleurs libres',
+          ],
+          limitations: [
+            'Le cadencement n\'est pas encore parfaitement calé sur le TO8.',
+            'Certains comportements restent des hypothèses tant que l\'analyse de l\'ASM n\'a pas tranché.',
+            'La progression et le déblocage des niveaux ne sont pas encore branchés.',
+            'Le générateur de niveaux reste expérimental.',
+          ],
+          about: 'Un travail de préservation autour d\'un classique de l\'informatique française des années 80. L\'objectif est de rejouer le jeu tel qu\'il était, en documentant chaque choix à partir des sources d\'origine, puis de lui offrir des outils modernes. Les droits du jeu original restent à leurs ayants droit.',
+        },
+      },
+      application: { category: 'GameApplication', operatingSystems: ['Web browser'] },
       indexable: true,
     },
   ],

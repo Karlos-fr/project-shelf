@@ -43,6 +43,7 @@ function corsCase(): void {
   assert.equal(canReadPixels('https://cdn.example.org/a.mp4', page), false);
   assert.equal(canReadPixels('http://raw.githubusercontent.com/a.mp4', page), false);
   assert.equal(crossOriginFor('https://raw.githubusercontent.com/a/b/main/v.mp4'), 'anonymous');
+  assert.equal(crossOriginFor('https://media.githubusercontent.com/media/a/b/main/v.mp4'), 'anonymous');
   assert.equal(crossOriginFor('/media/a.mp4'), undefined);
   assert.equal(crossOriginFor('https://cdn.example.org/a.mp4'), undefined);
 }
