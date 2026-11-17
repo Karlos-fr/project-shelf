@@ -9,6 +9,7 @@
 import { useCallback, useEffect, useMemo } from 'react';
 import { flushSync } from 'react-dom';
 import type { SiteConfig } from '../config/site.ts';
+import type { Locale } from '../domain/locale.ts';
 import type { Category, ProjectSummary, PublicProject } from '../domain/project.ts';
 import { selectProjects, sortCategories } from '../domain/gallery.ts';
 import type { RouteState } from '../domain/routes.ts';
@@ -52,10 +53,25 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
   const messages = MESSAGES[route.locale];
   const projectForFallback = !controller.hydrated && initialProject?.id === route.projectId ? initialProject : undefined;
   const [introLead, introRest] = splitIntro(config.intro[route.locale]);
-  const { openProject } = controller;
+  const { openProject, switchLocale } = controller;
 
   // Active la navigation aux flèches une seule fois, après hydratation.
   useEffect(() => installSpatialNavigation(document), []);
+
+  // Change de langue avec une transition : le texte se fond en remontant légèrement,
+  // la pastille EN/FR glisse, et les vidéos restent immobiles.
+  const switchLocaleAnimated = useCallback((locale: Locale): void => {
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (locale === route.locale || typeof document.startViewTransition !== 'function' || reduced) {
+      switchLocale(locale);
+      return;
+    }
+    const root = document.documentElement;
+    root.classList.add('is-switching-locale');
+    const transition = document.startViewTransition(() => flushSync(() => switchLocale(locale)));
+    transition.ready.catch(() => undefined);
+    transition.finished.catch(() => undefined).finally(() => root.classList.remove('is-switching-locale'));
+  }, [route.locale, switchLocale]);
 
   // Ouvre une fiche ; le média cliqué devient celui de la popin (View Transitions).
   const openWithTransition = useCallback((projectId: string, triggerId: string): void => {
@@ -84,7 +100,7 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
   return (
     <MediaCoordinatorContext.Provider value={mediaCoordinator}>
     <div className="site-shell" data-showcase-ready={controller.hydrated ? 'true' : 'false'}>
-      <SiteHeader config={config} route={route} onSwitchLocale={controller.switchLocale} />
+      <SiteHeader config={config} route={route} onSwitchLocale={switchLocaleAnimated} />
       <main>
         <section className="hero" aria-labelledby="hero-title">
           <h1 id="hero-title"><span>{introLead}</span>{introRest !== '' && <> <span className="hero__rest">{introRest}</span></>}</h1>
@@ -108,7 +124,7 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
       <footer className="site-footer"><span>ProjectShelf</span><a href={config.githubUrl}>GitHub</a></footer>
       {controller.hydrated && route.projectId !== null && (
         <ProjectModal projectId={route.projectId} categories={categories} project={controller.project?.id === route.projectId ? controller.project : undefined}
-          locale={route.locale} base={config.base} loading={controller.loading} error={controller.error} onClose={controller.closeProject} onSwitchLocale={controller.switchLocale} />
+          locale={route.locale} base={config.base} loading={controller.loading} error={controller.error} onClose={controller.closeProject} onSwitchLocale={switchLocaleAnimated} />
       )}
     </div>
     </MediaCoordinatorContext.Provider>

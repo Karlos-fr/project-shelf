@@ -14,10 +14,20 @@
 .site-header__nav { display: flex; align-items: center; gap: 1.1rem; font-size: .9rem; }
 .site-header__nav > a { color: var(--muted); text-decoration: none; }
 .site-header__nav > a:hover { color: var(--text); }
-.language-switch { display: flex; gap: .15rem; padding: .2rem; border: 1px solid var(--border); border-radius: 99px; }
-.language-switch > span { display: none; }
-.language-switch a { padding: .25rem .65rem; border-radius: 99px; color: var(--muted); font-size: .8rem; text-decoration: none; }
-.language-switch a[aria-current="page"] { background: var(--text); color: var(--background); font-weight: 600; }
+/* Sélecteur de langue : une pastille claire glisse sous la langue active, avec un léger rebond. */
+.language-switch, .project-modal__languages { position: relative; display: flex; padding: .2rem; border: 1px solid var(--border); border-radius: 99px; }
+.language-switch::before, .project-modal__languages::before {
+  content: ""; position: absolute; top: .2rem; bottom: .2rem; left: .2rem; width: 2.5rem; border-radius: 99px; background: var(--text);
+  transition: transform .5s cubic-bezier(.34, 1.56, .64, 1);
+}
+.language-switch:has(a[lang="fr"][aria-current="page"])::before,
+.project-modal__languages:has(button:last-of-type[aria-pressed="true"])::before { transform: translateX(2.5rem); }
+.language-switch > span, .project-modal__languages > span { display: none; }
+.language-switch a, .project-modal__languages button {
+  position: relative; z-index: 1; width: 2.5rem; padding: .25rem 0; border: 0; border-radius: 99px; background: none;
+  color: var(--muted); font-size: .8rem; font-weight: 600; text-align: center; text-decoration: none; cursor: pointer; transition: color .3s ease;
+}
+.language-switch a[aria-current="page"], .project-modal__languages button[aria-pressed="true"] { color: var(--background); }
 main { padding: .25rem 0 3rem; }
 
 /* ---------------------------------------------------------------- Accroche */
@@ -170,15 +180,35 @@ main { padding: .25rem 0 3rem; }
 .project-modal::backdrop { background: var(--background); }
 .project-modal__frame { position: relative; height: 100%; overflow: auto; padding: 0 var(--gutter) 3rem; }
 .project-modal__toolbar { position: sticky; z-index: 3; top: 0; display: flex; align-items: center; justify-content: flex-end; gap: .6rem; margin: 0 calc(-1 * var(--gutter)); padding: max(1rem, env(safe-area-inset-top, 0px)) var(--gutter) .75rem; }
-.project-modal__languages { display: flex; align-items: center; gap: .15rem; padding: .2rem; border: 1px solid var(--border-on-media); border-radius: 99px; background: rgb(10 11 13 / 70%); }
-.project-modal__languages > span { display: none; }
-.project-modal__languages button { padding: .25rem .65rem; border: 0; border-radius: 99px; background: none; color: var(--muted); font-size: .8rem; cursor: pointer; }
-.project-modal__languages button[aria-pressed="true"] { background: var(--text); color: var(--background); font-weight: 600; }
+.project-modal__languages { border-color: var(--border-on-media); background: rgb(10 11 13 / 70%); }
 .project-modal__close { flex: none; width: 2.75rem; height: 2.75rem; border: 0; border-radius: 50%; background: var(--text); color: var(--background); font-size: 1.4rem; line-height: 1; cursor: pointer; }
 .project-modal .project-details > .media-gallery { margin: calc(-1 * (2.75rem + max(1rem, env(safe-area-inset-top, 0px)) + .75rem)) calc(-1 * var(--gutter)) 0; }
 .project-modal .media-gallery__stage { border-radius: 0; }
 .project-load-error { display: grid; gap: 1rem; padding: 4rem 1rem; text-align: center; }
 ::view-transition-group(project-hero) { animation-duration: .5s; animation-timing-function: var(--ease-out); }
+
+/* Changement de langue : la page reste immobile (vidéos nettes), seuls les blocs de
+ * texte se dissolvent vers le haut puis remontent en se précisant. Les blocs de la
+ * page ne sont nommés que sans popin ouverte, sinon ils passeraient devant elle. */
+.is-switching-locale::view-transition-old(root), .is-switching-locale::view-transition-new(root) { animation: none; }
+.is-switching-locale:not(:has(dialog[open])) .language-switch { view-transition-name: locale-switch; }
+.is-switching-locale:not(:has(dialog[open])) #hero-title { view-transition-name: locale-hero; }
+.is-switching-locale:not(:has(dialog[open])) .featured-stage__index { view-transition-name: locale-index; }
+.is-switching-locale:not(:has(dialog[open])) .featured-slide--active .featured-slide__caption { view-transition-name: locale-caption; }
+.is-switching-locale:not(:has(dialog[open])) .all-projects { view-transition-name: locale-projects; }
+.is-switching-locale:has(dialog[open]) .project-modal__languages { view-transition-name: locale-switch-modal; }
+.is-switching-locale:has(dialog[open]) .project-details__header { view-transition-name: locale-detail-head; }
+.is-switching-locale:has(dialog[open]) .project-details__content { view-transition-name: locale-detail-body; }
+::view-transition-old(locale-hero), ::view-transition-old(locale-index), ::view-transition-old(locale-caption),
+::view-transition-old(locale-projects), ::view-transition-old(locale-detail-head), ::view-transition-old(locale-detail-body) { animation: locale-out .24s ease-in both; }
+::view-transition-new(locale-hero), ::view-transition-new(locale-index), ::view-transition-new(locale-caption),
+::view-transition-new(locale-projects), ::view-transition-new(locale-detail-head), ::view-transition-new(locale-detail-body) { animation: locale-in .42s var(--ease-out) .1s both; }
+::view-transition-group(locale-index), ::view-transition-group(locale-projects), ::view-transition-group(locale-detail-body) { animation-duration: .42s; }
+/* La pastille glisse en direct : pas de fondu entre ses deux états. */
+::view-transition-old(locale-switch), ::view-transition-old(locale-switch-modal) { display: none; }
+::view-transition-new(locale-switch), ::view-transition-new(locale-switch-modal) { animation: none; }
+@keyframes locale-out { to { opacity: 0; filter: blur(6px); transform: translateY(-.6rem); } }
+@keyframes locale-in { from { opacity: 0; filter: blur(6px); transform: translateY(.6rem); } }
 
 /* ---------------------------------------------------------------- Galerie de fiche */
 .media-gallery { display: grid; gap: .75rem; }
