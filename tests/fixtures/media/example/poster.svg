@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-label="Synthetic ProjectShelf fixture poster">
+  <!-- Poster synthétique abstrait : lumières floues sans texte, représentatif d'une capture réelle. -->
+  <defs>
+    <radialGradient id="warm" cx="0.68" cy="0.38" r="0.42">
+      <stop offset="0" stop-color="#ff5a8a"/>
+      <stop offset="1" stop-color="#ff5a8a" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="cool" cx="0.82" cy="0.72" r="0.45">
+      <stop offset="0" stop-color="#6b4dff"/>
+      <stop offset="1" stop-color="#6b4dff" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="accent" cx="0.38" cy="0.85" r="0.4">
+      <stop offset="0" stop-color="#4da3ff" stop-opacity="0.75"/>
+      <stop offset="1" stop-color="#4da3ff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="base" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0c0a1a"/>
+      <stop offset="1" stop-color="#101a30"/>
+    </linearGradient>
+  </defs>
+  <rect width="1280" height="720" fill="url(#base)"/>
+  <rect width="1280" height="720" fill="url(#cool)"/>
+  <rect width="1280" height="720" fill="url(#warm)"/>
+  <rect width="1280" height="720" fill="url(#accent)"/>
+</svg>

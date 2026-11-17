@@ -1,0 +1,30 @@
+---
+// ============================================================================
+// SeoHead — Métadonnées HTML communes aux routes pré-générées
+// ----------------------------------------------------------------------------
+// Ce composant sérialise exclusivement SeoModel. Il ne recalcule ni canonical,
+// ni hreflang, ni politique d'indexation et ne lit jamais le catalogue source.
+// ============================================================================
+import type { SeoModel } from '../seo/model.ts';
+
+interface Props {
+  model: SeoModel;
+}
+
+// Le modèle a déjà été construit depuis la configuration et les données publiques.
+const { model } = Astro.props;
+---
+<title>{model.title}</title>
+<meta name="description" content={model.description} data-project-shelf-seo />
+<meta name="robots" content={model.robots} data-project-shelf-seo />
+<link rel="canonical" href={model.canonical} data-project-shelf-seo />
+{model.alternates.map((alternate) => (
+  <link rel="alternate" hreflang={alternate.lang} href={alternate.href} data-project-shelf-seo />
+))}
+<meta data-project-shelf-seo property="og:title" content={model.title} />
+<meta data-project-shelf-seo property="og:description" content={model.description} />
+<meta data-project-shelf-seo property="og:url" content={model.canonical} />
+<meta data-project-shelf-seo property="og:locale" content={model.openGraphLocale} />
+<meta data-project-shelf-seo property="og:type" content="website" />
+{model.image !== undefined && <meta data-project-shelf-seo property="og:image" content={model.image} />}
+<meta data-project-shelf-seo name="twitter:card" content={model.image === undefined ? 'summary' : 'summary_large_image'} />

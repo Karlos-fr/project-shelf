@@ -1,0 +1,49 @@
+---
+// ============================================================================
+// LocalizedProjectPage — Fiche projet HTML pré-générée et partageable
+// ----------------------------------------------------------------------------
+// Cette route rend la même fiche que l'expérience cliente. Sans JavaScript, le
+// contenu reste un article normal, visible et accessible depuis la galerie.
+// ============================================================================
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import ShowcaseApp from '../../../components/ShowcaseApp.tsx';
+import { loadSiteConfig } from '../../../config/site.ts';
+import { loadPublishedCatalogue } from '../../../data/published.ts';
+import { buildSeo } from '../../../seo/model.ts';
+import { buildStructuredData, serializeJsonLd } from '../../../seo/structured-data.ts';
+import type { Locale } from '../../../domain/locale.ts';
+import type { PublicProject } from '../../../domain/project.ts';
+import type { RouteState } from '../../../domain/routes.ts';
+
+interface Props {
+  locale: Locale;
+  project: PublicProject;
+}
+
+// ----------------------------------------------------------------------------
+// Pré-génère les deux langues de chaque projet explicitement publié.
+// Retour : aucune route pour les projets hidden, déjà absents du catalogue public.
+// ----------------------------------------------------------------------------
+export async function getStaticPaths() {
+  const catalogue = await loadPublishedCatalogue();
+  return Object.values(catalogue.details).flatMap((project) => [
+    { params: { lang: 'en', id: project.id }, props: { locale: 'en' as const, project } },
+    { params: { lang: 'fr', id: project.id }, props: { locale: 'fr' as const, project } },
+  ]);
+}
+
+// Les props proviennent exclusivement du catalogue assaini.
+const { locale, project } = Astro.props;
+const config = loadSiteConfig(process.env);
+const catalogue = await loadPublishedCatalogue();
+const route: RouteState = { locale, projectId: project.id, categories: [], sort: 'updated', q: '' };
+const seo = buildSeo(config, route, project);
+const structuredData = buildStructuredData(project, locale, config);
+---
+<BaseLayout seo={seo}>
+  <Fragment slot="head">
+    {structuredData.map((entry) => <script type="application/ld+json" data-project-shelf-structured set:html={serializeJsonLd(entry)} />)}
+  </Fragment>
+  <ShowcaseApp client:load config={config} categories={catalogue.categories}
+    summaries={catalogue.summaries} initialRoute={route} initialProject={project} />
+</BaseLayout>

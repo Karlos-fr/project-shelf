@@ -1,0 +1,26 @@
+# =============================================================================
+# GitIgnore — Exclusion des dépendances, artefacts et configurations privées
+# -----------------------------------------------------------------------------
+# Ce fichier configure uniquement les outils ; aucune donnée applicative n'y figure.
+# =============================================================================
+# Dépendances, sorties de build et données générées non versionnées.
+node_modules/
+dist/
+.generated/
+.astro/
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+
+# Configuration personnelle et espaces de travail isolés.
+.env
+.env.*
+!.env.example
+.worktrees/
+worktrees/
+
+# Journaux locaux et métadonnées des postes.
+*.log
+.DS_Store
+Thumbs.db

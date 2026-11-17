@@ -1,0 +1,52 @@
+/* ============================================================================
+ * DesignTokens — Jetons visuels « Cinéma » de ProjectShelf
+ * ----------------------------------------------------------------------------
+ * Ce fichier centralise thème sombre, accent, typographie, rayons, ombres et
+ * courbes d'animation. Les composants n'introduisent pas de thème par projet.
+ * L'accent global #4DA3FF approuvé en T0 reste la seule couleur d'action.
+ * ========================================================================= */
+:root {
+  color-scheme: dark;
+  /* Noir profond de salle de projection : les visuels des projets dominent. */
+  --background: #050608;
+  /* Surface translucide des panneaux posés sur le fond. */
+  --surface: rgb(255 255 255 / 4%);
+  /* Surface secondaire des contrôles et vignettes. */
+  --surface-raised: rgb(255 255 255 / 8%);
+  /* Surface opaque des couches superposées (popin, listes déroulantes). */
+  --surface-solid: #0c0e13;
+  /* Fond des médias avant chargement. */
+  --media-background: #0b0d12;
+  /* Filet fin, présent sans dominer les médias. */
+  --border: rgb(255 255 255 / 9%);
+  /* Filet renforcé au survol et sur les contrôles actifs. */
+  --border-strong: rgb(255 255 255 / 18%);
+  /* Texte principal à contraste élevé. */
+  --text: #ffffff;
+  /* Texte secondaire pour accroches et métadonnées. */
+  --muted: rgb(255 255 255 / 68%);
+  /* Texte tertiaire des libellés techniques. */
+  --subtle: rgb(255 255 255 / 48%);
+  /* Accent global unique choisi pour les actions (T0). */
+  --accent: #4da3ff;
+  /* Halo de l'accent pour ombres lumineuses. */
+  --accent-glow: rgb(77 163 255 / 55%);
+  /* Texte sombre utilisé sur les surfaces d'accent. */
+  --on-accent: #061423;
+  /* Police unique, variable : graisses 800 pour l'affiche, 400 pour le texte. */
+  --font-sans: "Bricolage Grotesque Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Largeur maximale de contenu à quatre cartes. */
+  --content-width: 92rem;
+  /* Marge latérale de la scène plein écran, alignée sur le contenu. */
+  --stage-gutter: max(1rem, calc((100vw - var(--content-width)) / 2));
+  /* Rayon commun des cartes et panneaux. */
+  --radius: .85rem;
+  /* Rayon compact des boutons et champs. */
+  --radius-small: .65rem;
+  /* Ombre profonde des surfaces superposées. */
+  --shadow: 0 2.5rem 6rem -1.5rem rgb(0 0 0 / 80%);
+  /* Ombre des cartes agrandies au survol, avec anneau d'accent. */
+  --shadow-lift: 0 1.6rem 3.2rem -.8rem rgb(0 0 0 / 85%), 0 0 0 2px var(--accent);
+  /* Courbe d'animation douce, sans rebond. */
+  --ease-out: cubic-bezier(.2, .75, .2, 1);
+}

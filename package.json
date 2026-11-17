@@ -1,0 +1,52 @@
+{
+  "name": "project-shelf",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "A visual project showcase with video previews, rich project galleries, and bilingual SEO.",
+  "engines": {
+    "node": ">=22.12.0",
+    "npm": ">=9.6.5"
+  },
+  "scripts": {
+    "setup": "node scripts/setup-toolchain.mjs",
+    "dev": "node scripts/run-local-tool.mjs astro dev",
+    "check": "node scripts/run-local-tool.mjs astro check",
+    "build": "node scripts/run-local-tool.mjs tsx scripts/build.ts",
+    "preview": "node scripts/run-local-tool.mjs astro preview --host 127.0.0.1 --port 4321",
+    "test:bootstrap": "node --experimental-strip-types --test tests/bootstrap/*.test.mjs",
+    "test:unit": "node scripts/run-local-tool.mjs vitest run --project unit",
+    "test:build": "node scripts/run-local-tool.mjs vitest run --project build",
+    "test:e2e": "node scripts/run-local-tool.mjs playwright test",
+    "test:native": "node scripts/test-native.mjs",
+    "validate:catalogue": "node scripts/run-local-tool.mjs tsx scripts/validate-catalogue.ts",
+    "test": "npm run test:unit",
+    "package:static": "node scripts/run-local-tool.mjs tsx scripts/package-static.ts",
+    "verify:deploy": "node scripts/run-local-tool.mjs tsx scripts/verify-deploy.ts",
+    "deploy:pages": "node scripts/run-local-tool.mjs tsx scripts/deploy-pages.ts",
+    "measure:output": "node scripts/run-local-tool.mjs tsx scripts/measure-output.ts",
+    "verify": "npm run validate:catalogue && npm run test:native && npm run build -- --fixture --mode production --origin https://example.test --base / && npm run check && npm run test:unit && npm run test:build && npm run test:e2e && npm run measure:output"
+  },
+  "dependencies": {
+    "@astrojs/react": "6.0.2",
+    "@fontsource-variable/bricolage-grotesque": "5.3.0",
+    "astro": "7.2.0",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "4.3.6"
+  },
+  "devDependencies": {
+    "@astrojs/check": "0.9.10",
+    "@playwright/test": "1.58.2",
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.3.0",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "cheerio": "1.2.0",
+    "jsdom": "^26.1.0",
+    "tsx": "^4.20.3",
+    "typescript": "6.0.3",
+    "vitest": "4.1.0"
+  }
+}

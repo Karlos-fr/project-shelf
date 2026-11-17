@@ -1,0 +1,31 @@
+---
+// ============================================================================
+// BaseLayout — Document HTML commun aux pages ProjectShelf
+// ----------------------------------------------------------------------------
+// Ce layout rend la langue, SeoHead et les styles globaux. Le contenu projet et
+// la navigation restent dans les routes et composants dédiés.
+// ============================================================================
+import SeoHead from '../components/SeoHead.astro';
+import type { SeoModel } from '../seo/model.ts';
+import '../styles/global.css';
+import '../styles/components.css';
+
+interface Props {
+  seo: SeoModel;
+}
+
+// La route fournit un modèle SEO complet et déjà normalisé.
+const { seo } = Astro.props;
+---
+<!doctype html>
+<html lang={seo.lang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <meta name="theme-color" content="#111418" />
+    <SeoHead model={seo} />
+    <slot name="head" />
+  </head>
+  <body><slot /></body>
+</html>

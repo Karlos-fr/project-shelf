@@ -1,0 +1,32 @@
+---
+// ============================================================================
+// NotFoundPage — Document d'erreur statique et non indexable
+// ----------------------------------------------------------------------------
+// Cette page laisse l'hébergeur retourner HTTP 404. Elle ne réécrit jamais une
+// route inconnue vers l'accueil avec un statut 200.
+// ============================================================================
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { loadSiteConfig } from '../config/site.ts';
+import { buildSeo } from '../seo/model.ts';
+import { formatRoute, type RouteState } from '../domain/routes.ts';
+
+// Le modèle de départ fournit une origine sûre ; la 404 neutralise son indexation.
+const config = loadSiteConfig(process.env);
+const route: RouteState = { locale: 'en', projectId: null, categories: [], sort: 'updated', q: '' };
+const baseSeo = buildSeo(config, route);
+const seo = {
+  ...baseSeo,
+  title: 'Page not found — ProjectShelf',
+  description: 'This page does not exist.',
+  robots: 'noindex,nofollow' as const,
+  alternates: [],
+};
+---
+<BaseLayout seo={seo}>
+  <main class="not-found" aria-labelledby="missing-title">
+    <p class="eyebrow">404</p>
+    <h1 id="missing-title">Page not found</h1>
+    <p>This address does not belong to the collection.</p>
+    <a class="button button--primary" href={formatRoute(route, config.base)}>Back to projects</a>
+  </main>
+</BaseLayout>

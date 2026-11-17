@@ -1,0 +1,33 @@
+---
+// ============================================================================
+// LocalizedHomePage — Accueil pré-généré pour chaque langue prise en charge
+// ----------------------------------------------------------------------------
+// La page lit uniquement le catalogue public préparé par le pipeline de build.
+// Les filtres d'URL sont appliqués après hydratation ; le HTML reste complet.
+// ============================================================================
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import ShowcaseApp from '../../components/ShowcaseApp.tsx';
+import { loadSiteConfig } from '../../config/site.ts';
+import { loadPublishedCatalogue } from '../../data/published.ts';
+import { buildSeo } from '../../seo/model.ts';
+import type { Locale } from '../../domain/locale.ts';
+import type { RouteState } from '../../domain/routes.ts';
+
+// ----------------------------------------------------------------------------
+// Pré-génère exactement les deux langues supportées, sans variante géographique.
+// ----------------------------------------------------------------------------
+export function getStaticPaths() {
+  return [{ params: { lang: 'en' } }, { params: { lang: 'fr' } }];
+}
+
+// Les seuls params possibles viennent de getStaticPaths.
+const locale = Astro.params.lang as Locale;
+const config = loadSiteConfig(process.env);
+const catalogue = await loadPublishedCatalogue();
+const route: RouteState = { locale, projectId: null, categories: [], sort: 'updated', q: '' };
+const seo = buildSeo(config, route);
+---
+<BaseLayout seo={seo}>
+  <ShowcaseApp client:load config={config} categories={catalogue.categories}
+    summaries={catalogue.summaries} initialRoute={route} />
+</BaseLayout>

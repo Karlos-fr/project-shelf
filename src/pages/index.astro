@@ -1,0 +1,24 @@
+---
+// ============================================================================
+// RootPage — Accueil anglais de repli à la racine du site
+// ----------------------------------------------------------------------------
+// Cette route fournit immédiatement le contenu anglais et canonicalise /en/.
+// La détection navigateur facultative sera ajoutée sans remplacer ce HTML.
+// ============================================================================
+import BaseLayout from '../layouts/BaseLayout.astro';
+import ShowcaseApp from '../components/ShowcaseApp.tsx';
+import { loadSiteConfig } from '../config/site.ts';
+import { loadPublishedCatalogue } from '../data/published.ts';
+import { buildSeo } from '../seo/model.ts';
+import type { RouteState } from '../domain/routes.ts';
+
+// L'accueil racine est volontairement l'anglais par défaut.
+const config = loadSiteConfig(process.env);
+const catalogue = await loadPublishedCatalogue();
+const route: RouteState = { locale: 'en', projectId: null, categories: [], sort: 'updated', q: '' };
+const seo = buildSeo(config, route);
+---
+<BaseLayout seo={seo}>
+  <ShowcaseApp client:load config={config} categories={catalogue.categories}
+    summaries={catalogue.summaries} initialRoute={route} />
+</BaseLayout>

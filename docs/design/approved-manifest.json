@@ -1,0 +1,41 @@
+{
+  "approvedBy": "author",
+  "approvedOn": "2026-09-06",
+  "approval": "Je valide — réponse à la revue visuelle T0",
+  "sourceSha256": "e5687b5c5935278dbf4f90e44d59a56c3a965408fa690f67a609abb61bf9dfb2",
+  "sourceBytes": 85389,
+  "references": [
+    {
+      "file": "home-desktop.png",
+      "sha256": "0145817a4294ccbb1e03156c413c15c5a0dbec258acc7aafca6cec003dffe5a2",
+      "bytes": 246820
+    },
+    {
+      "file": "home-mobile.png",
+      "sha256": "dea4e138fab1c98cac9fe8b80b6f5b72fc73a62dd496f9746d4f96071f4c2fca",
+      "bytes": 76066
+    },
+    {
+      "file": "project-detail-desktop.png",
+      "sha256": "22189ca025f72d52435fc909b51c37fe844e9f89f0ca0700119bedbe186f017a",
+      "bytes": 217887
+    },
+    {
+      "file": "project-detail-mobile.png",
+      "sha256": "626a1dedabd05fb14711df5e591376752365bf9835b84119d825bdd5611a9bd5",
+      "bytes": 77625
+    },
+    {
+      "file": "overview.png",
+      "sha256": "2a67d4bec59dfdea5367cd79f1a9ac4e5ed4b0b0c1599d3082e69bf81a0389e7",
+      "bytes": 578893
+    }
+  ],
+  "storageNote": "La revue visuelle Markdown est archivée dans Git. Le démonstrateur HTML et les captures PNG originales restent dans la livraison T0 et sont traçables par leurs SHA-256 et tailles dans ce manifeste.",
+  "sourceFile": "project-shelf-preview.html",
+  "visualReview": {
+    "file": "visual-review.md",
+    "sha256": "845380ec4539b5a989b4dbaaa15baf8c417541966533dbad05ddfaa003a4b0e1",
+    "bytes": 12087
+  }
+}
