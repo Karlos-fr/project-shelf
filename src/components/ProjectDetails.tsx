@@ -9,6 +9,7 @@ import type { Category, ProjectLinkType, PublicProject } from '../domain/project
 import { formatProjectDate } from '../domain/locale.ts';
 import { MESSAGES } from '../i18n/messages.ts';
 import MediaGallery from './MediaGallery.tsx';
+import ProjectTags from './ProjectTags.tsx';
 
 export type ProjectDetailsProps = {
   project: PublicProject;
@@ -29,29 +30,35 @@ export default function ProjectDetails({ project, locale, base, categories }: Pr
   return (
     <article className="project-details" data-project-id={project.id} aria-labelledby={`project-title-${project.id}`}>
       <header className="project-details__header">
-        <div>
-          <p className="project-details__categories">{categoryLabels.join(' · ')}</p>
-          <h1 id={`project-title-${project.id}`} tabIndex={-1}>{project.name}</h1>
-          <p className="project-details__tagline">{content.tagline}</p>
-        </div>
-        <span className="status-badge">{messages[project.status]}</span>
+        <h1 id={`project-title-${project.id}`} tabIndex={-1}>{project.name}</h1>
+        <ProjectTags categoryLabels={categoryLabels} status={project.status} stack={project.stack.slice(0, 3)} locale={locale} />
+        <p className="project-details__tagline">{content.tagline}</p>
       </header>
       <MediaGallery project={project} locale={locale} base={base} />
       <div className="project-details__content">
-        <p>{content.description}</p>
-        {content.features.length > 0 && <DetailList title={messages.features} items={content.features} />}
-        {content.limitations !== undefined && content.limitations.length > 0 && <DetailList title={messages.limits} items={content.limitations} />}
-        {content.about !== undefined && <section><h2>{messages.motivation}</h2><p>{content.about}</p></section>}
-        <section><h2>{messages.technologies}</h2><p>{project.stack.join(' · ')}</p></section>
-        <dl className="project-dates">
-          <div><dt>{messages.createdOn}</dt><dd><time dateTime={project.createdAt}>{formatProjectDate(project.createdAt, locale)}</time></dd></div>
-          <div><dt>{messages.updatedOn}</dt><dd><time dateTime={project.updatedAt}>{formatProjectDate(project.updatedAt, locale)}</time></dd></div>
-        </dl>
-        <div className="project-actions">
-          {project.repositoryVisibility === 'public' && project.repositoryUrl !== undefined
-            ? <a className="button button--primary" href={project.repositoryUrl}>{messages.viewSource}</a>
-            : <span className="private-repository">{messages.privateRepository}</span>}
-          {project.links.map((link) => <a key={`${link.type}-${link.url}`} className="button button--secondary" href={link.url}>{linkLabel(link.type, locale)}</a>)}
+        <div className="project-details__main">
+          <p className="project-details__description">{content.description}</p>
+          {content.about !== undefined && <section><h2>{messages.motivation}</h2><p>{content.about}</p></section>}
+          {/* Le téléchargement passe en premier : c'est l'action attendue sur une fiche. */}
+          <div className="project-actions">
+            {orderedLinks(project.links).map((link) => (
+              <a key={`${link.type}-${link.url}`} className={link.type === 'release' || link.type === 'demo' ? 'button button--primary' : 'button button--secondary'} href={link.url} data-nav="">
+                {linkLabel(link.type, locale)}
+              </a>
+            ))}
+            {project.repositoryVisibility === 'public' && project.repositoryUrl !== undefined
+              ? <a className="button button--secondary" href={project.repositoryUrl} data-nav="">{messages.viewSource}</a>
+              : <span className="private-repository">{messages.privateRepository}</span>}
+          </div>
+          <dl className="project-dates">
+            <div><dt>{messages.createdOn}</dt><dd><time dateTime={project.createdAt}>{formatProjectDate(project.createdAt, locale)}</time></dd></div>
+            <div><dt>{messages.updatedOn}</dt><dd><time dateTime={project.updatedAt}>{formatProjectDate(project.updatedAt, locale)}</time></dd></div>
+          </dl>
+        </div>
+        <div className="project-details__side">
+          {content.features.length > 0 && <DetailList title={messages.features} items={content.features} />}
+          {content.limitations !== undefined && content.limitations.length > 0 && <DetailList title={messages.limits} items={content.limitations} />}
+          <section><h2>{messages.technologies}</h2><p className="project-details__stack">{project.stack.join(' · ')}</p></section>
         </div>
       </div>
     </article>
@@ -74,4 +81,14 @@ function linkLabel(type: ProjectLinkType, locale: Locale): string {
   if (type === 'website') return messages.visitWebsite;
   if (type === 'release') return messages.viewRelease;
   return messages.documentation;
+}
+
+// Ordre d'affichage des actions : ce qui se lance ou se télécharge d'abord.
+const LINK_ORDER: Readonly<Record<ProjectLinkType, number>> = { release: 0, demo: 1, website: 2, documentation: 3 };
+
+// ----------------------------------------------------------------------------
+// Trie les liens d'action sans modifier la liste publiée.
+// ----------------------------------------------------------------------------
+function orderedLinks<T extends { type: ProjectLinkType }>(links: readonly T[]): T[] {
+  return [...links].sort((left, right) => LINK_ORDER[left.type] - LINK_ORDER[right.type]);
 }

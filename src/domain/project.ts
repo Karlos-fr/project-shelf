@@ -19,8 +19,10 @@ export type RepositoryVisibility = Project['repositoryVisibility'];
 // Résumé de carte embarqué dans chaque page : seuls les champs affichés ou filtrés.
 // Le détail complet reste dans la fiche HTML et son JSON chargé à l'ouverture.
 export type ProjectSummary = Pick<PublicProject,
-  'id' | 'name' | 'categories' | 'createdAt' | 'updatedAt' | 'featured' | 'featuredOrder' | 'preview'> & {
+  'id' | 'name' | 'categories' | 'createdAt' | 'updatedAt' | 'status' | 'featured' | 'featuredOrder' | 'preview'> & {
   tagline: Localized<string>;
+  // Deux premières technologies, affichées en tags sur les cartes.
+  topStack: string[];
   categoryLabels: Localized<string[]>;
   searchText: string;
 };

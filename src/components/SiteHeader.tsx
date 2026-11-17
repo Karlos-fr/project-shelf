@@ -27,7 +27,7 @@ export default function SiteHeader({ config, route, onSwitchLocale }: SiteHeader
         <a className="site-name" href={formatRoute({ ...route, projectId: null }, config.base)}>{config.name}</a>
       </div>
       <nav className="site-header__nav" aria-label={messages.language}>
-        <a href={config.githubUrl} rel="me">GitHub</a>
+        <a href={config.githubUrl} rel="me" data-nav="">GitHub</a>
         <span className="language-switch" aria-label={messages.language}>
           <LanguageLink locale="en" route={route} base={config.base} onSwitch={onSwitchLocale} />
           <span aria-hidden="true">/</span>
@@ -51,7 +51,7 @@ function LanguageLink({ locale, route, base, onSwitch }: { locale: Locale; route
     onSwitch(locale);
   }
   return (
-    <a href={formatRoute({ ...route, locale }, base)} lang={locale} aria-current={route.locale === locale ? 'page' : undefined} onClick={handleClick}>
+    <a href={formatRoute({ ...route, locale }, base)} lang={locale} aria-current={route.locale === locale ? 'page' : undefined} onClick={handleClick} data-nav="">
       {locale.toUpperCase()}
     </a>
   );

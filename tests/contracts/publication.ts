@@ -94,6 +94,8 @@ function compactSummaryCase(): void {
   assert.deepEqual(summary?.tagline, { en: 'English tagline', fr: 'Accroche française' });
   assert.equal('content' in (summary ?? {}), false);
   assert.equal('stack' in (summary ?? {}), false);
+  assert.deepEqual(summary?.topStack, ['TypeScript']);
+  assert.equal(summary?.status, 'active');
 }
 
 // ----------------------------------------------------------------------------

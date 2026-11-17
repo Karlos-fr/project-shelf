@@ -69,11 +69,11 @@ export default function ProjectModal({ projectId, project, categories, locale, b
       <div className="project-modal__frame">
         <div className="project-modal__toolbar">
         <div className="project-modal__languages" aria-label={messages.language}>
-          <button type="button" aria-pressed={locale === 'en'} onClick={() => onSwitchLocale('en')}>EN</button>
+          <button type="button" aria-pressed={locale === 'en'} onClick={() => onSwitchLocale('en')} data-nav="">EN</button>
           <span aria-hidden="true">/</span>
-          <button type="button" aria-pressed={locale === 'fr'} onClick={() => onSwitchLocale('fr')}>FR</button>
+          <button type="button" aria-pressed={locale === 'fr'} onClick={() => onSwitchLocale('fr')} data-nav="">FR</button>
         </div>
-        <button type="button" className="project-modal__close" aria-label={messages.closeProject} onClick={onClose}>×</button>
+        <button type="button" className="project-modal__close" aria-label={messages.closeProject} onClick={onClose} data-nav="">×</button>
         </div>
         {project !== undefined && <ProjectDetails project={project} locale={locale} base={base} categories={categories} />}
         {project === undefined && loading && <p data-modal-title tabIndex={-1}>{messages.loadingProject}</p>}

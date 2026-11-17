@@ -3,8 +3,11 @@
 // ----------------------------------------------------------------------------
 // Le rendu initial contient toute la galerie et une fiche directe éventuelle.
 // Après hydratation, History et la popin reprennent l'interaction sans client-only.
+// Les flèches déplacent le focus comme une télécommande, et l'ouverture d'une
+// fiche fait grandir son média jusqu'à la popin quand le navigateur le permet.
 // ============================================================================
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 import type { SiteConfig } from '../config/site.ts';
 import type { Category, ProjectSummary, PublicProject } from '../domain/project.ts';
 import { selectProjects, sortCategories } from '../domain/gallery.ts';
@@ -13,6 +16,7 @@ import { selectFeaturedProjects } from '../featured/order.ts';
 import { MESSAGES } from '../i18n/messages.ts';
 import { MediaCoordinatorContext } from '../media/context.tsx';
 import { createMediaCoordinator } from '../media/coordinator.ts';
+import { installSpatialNavigation } from '../navigation/spatial-nav.ts';
 import { useShowcase } from '../navigation/useShowcase.ts';
 import SiteHeader from './SiteHeader.tsx';
 import FeaturedCarousel from './FeaturedCarousel.tsx';
@@ -47,6 +51,35 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
   const featured = useMemo(() => selectFeaturedProjects(summaries), [summaries]);
   const messages = MESSAGES[route.locale];
   const projectForFallback = !controller.hydrated && initialProject?.id === route.projectId ? initialProject : undefined;
+  const [introLead, introRest] = splitIntro(config.intro[route.locale]);
+  const { openProject } = controller;
+
+  // Active la navigation aux flèches une seule fois, après hydratation.
+  useEffect(() => installSpatialNavigation(document), []);
+
+  // Ouvre une fiche ; le média cliqué devient celui de la popin (View Transitions).
+  const openWithTransition = useCallback((projectId: string, triggerId: string): void => {
+    const trigger = document.getElementById(triggerId);
+    const source = trigger?.closest('.project-card')?.querySelector<HTMLElement>('[data-vt-media]')
+      ?? document.querySelector<HTMLElement>(`.featured-slide--active [data-vt-media="${projectId}"]`);
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (source === null || source === undefined || typeof document.startViewTransition !== 'function' || reduced) {
+      openProject(projectId, triggerId);
+      return;
+    }
+    source.style.viewTransitionName = 'project-hero';
+    const transition = document.startViewTransition(async () => {
+      source.style.viewTransitionName = '';
+      flushSync(() => openProject(projectId, triggerId));
+      const target = await waitForElement('dialog.project-modal[open] .media-gallery__stage', 700);
+      if (target !== null) target.style.viewTransitionName = 'project-hero';
+    });
+    // Une transition interrompue ne doit jamais remonter en erreur : la fiche est déjà ouverte.
+    transition.ready.catch(() => undefined);
+    transition.finished.catch(() => undefined).finally(() => {
+      document.querySelectorAll<HTMLElement>('.media-gallery__stage').forEach((stage) => { stage.style.viewTransitionName = ''; });
+    });
+  }, [openProject]);
 
   return (
     <MediaCoordinatorContext.Provider value={mediaCoordinator}>
@@ -54,8 +87,7 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
       <SiteHeader config={config} route={route} onSwitchLocale={controller.switchLocale} />
       <main>
         <section className="hero" aria-labelledby="hero-title">
-          <p className="eyebrow">ProjectShelf</p>
-          <h1 id="hero-title">{config.intro[route.locale]}</h1>
+          <h1 id="hero-title"><span>{introLead}</span>{introRest !== '' && <> <span className="hero__rest">{introRest}</span></>}</h1>
         </section>
         {projectForFallback !== undefined && (
           <section className="direct-project" aria-label={projectForFallback.name}>
@@ -64,13 +96,13 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
         )}
         {featured.length > 0 && (
           <FeaturedCarousel projects={featured} route={route} base={config.base}
-            suspended={route.projectId !== null} onOpen={controller.openProject} />
+            suspended={route.projectId !== null} onOpen={openWithTransition} />
         )}
         <section className="all-projects" aria-labelledby="all-projects-title">
           <div className="section-heading"><h2 id="all-projects-title" tabIndex={-1}>{messages.allProjects}</h2></div>
           <ProjectFilters categories={sortedCategories} locale={route.locale} state={gallery}
             onChange={controller.updateGallery} onSearchCommit={controller.endSearchEdit} />
-          <ProjectGrid projects={selected} route={route} base={config.base} onOpen={controller.openProject} />
+          <ProjectGrid projects={selected} route={route} base={config.base} onOpen={openWithTransition} />
         </section>
       </main>
       <footer className="site-footer"><span>ProjectShelf</span><a href={config.githubUrl}>GitHub</a></footer>
@@ -81,4 +113,31 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
     </div>
     </MediaCoordinatorContext.Provider>
   );
+}
+
+// ----------------------------------------------------------------------------
+// Sépare l'accroche en une phrase principale et un complément plus discret.
+// Paramètres : intro est le texte traduit du site ; retour : [principal, reste].
+// ----------------------------------------------------------------------------
+function splitIntro(intro: string): [string, string] {
+  const cut = intro.indexOf('. ');
+  return cut === -1 ? [intro, ''] : [intro.slice(0, cut + 1), intro.slice(cut + 2)];
+}
+
+// ----------------------------------------------------------------------------
+// Attend qu'un élément apparaisse, sans dépasser un délai maximal.
+// Retour : l'élément trouvé, ou null si le délai est écoulé.
+// ----------------------------------------------------------------------------
+function waitForElement(selector: string, timeoutMs: number): Promise<HTMLElement | null> {
+  const started = performance.now();
+  return new Promise((resolve) => {
+    // Vérifie toutes les 16 ms : pendant une View Transition, le navigateur ne
+    // produit plus d'images, donc requestAnimationFrame ne serait jamais rappelé.
+    function check(): void {
+      const found = document.querySelector<HTMLElement>(selector);
+      if (found !== null || performance.now() - started > timeoutMs) resolve(found);
+      else setTimeout(check, 16);
+    }
+    check();
+  });
 }

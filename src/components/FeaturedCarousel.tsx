@@ -1,17 +1,19 @@
 // ============================================================================
-// FeaturedCarousel — Carrousel éditorial piloté par vidéo ou poster
+// FeaturedCarousel — Scène « Écran » pilotée par un index typographique
 // ----------------------------------------------------------------------------
-// Ce composant relie la machine Featured aux vrais événements média. Il partage
-// l'arbitre global et réutilise ProjectCard pour ouvrir la fiche commune.
+// Ce composant relie la machine Featured aux vrais événements média. Sur grand
+// écran, survoler ou focaliser un titre de l'index change la vidéo de la scène ;
+// sur téléphone, les diapositives se font glisser au doigt. Il partage l'arbitre
+// média global et chaque titre reste un vrai lien vers la fiche commune.
 // ============================================================================
-import { useEffect, useMemo, useReducer, useRef, useState } from 'react';
+import { useEffect, useMemo, useReducer, useRef, useState, type MouseEvent, type UIEvent } from 'react';
 import type { ProjectSummary } from '../domain/project.ts';
-import { assetUrl, type RouteState } from '../domain/routes.ts';
-import { createFeaturedState, reduceFeatured, visibleFeaturedIds } from '../featured/machine.ts';
+import { assetUrl, formatRoute, type RouteState } from '../domain/routes.ts';
+import { createFeaturedState, reduceFeatured } from '../featured/machine.ts';
 import { MESSAGES } from '../i18n/messages.ts';
 import { useMediaCoordinator } from '../media/context.tsx';
 import { tryPlay } from '../media/playback.ts';
-import ProjectCard from './ProjectCard.tsx';
+import ProjectTags from './ProjectTags.tsx';
 
 export type FeaturedCarouselProps = {
   projects: ProjectSummary[];
@@ -29,11 +31,10 @@ const MEDIA_STALL_MS = 8000;
 const FEATURED_MEDIA_PRIORITY = 10;
 
 // ----------------------------------------------------------------------------
-// Rend le projet actif et jusqu'à deux posters secondaires.
+// Rend la scène : médias superposés, index des titres et commandes de rotation.
 // ----------------------------------------------------------------------------
 export default function FeaturedCarousel({ projects, route, base, suspended, onOpen }: FeaturedCarouselProps) {
   const coordinator = useMediaCoordinator();
-  const ids = useMemo(() => projects.map((project) => project.id), [projects]);
   const [state, dispatch] = useReducer(reduceFeatured, projects.length, (count) => createFeaturedState(count, true));
   const [reducedMotion, setReducedMotion] = useState(true);
   const [visible, setVisible] = useState(true);
@@ -41,26 +42,22 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
   const [leaseGranted, setLeaseGranted] = useState(false);
   const [fallbackPoster, setFallbackPoster] = useState(false);
   const sectionRef = useRef<HTMLElement>(null);
+  const slidesRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const progressRef = useRef<HTMLElement>(null);
   const posterTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stallTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const active = projects[state.active];
   const messages = MESSAGES[route.locale];
-  const windowProjects = visibleFeaturedIds(ids, state.active).flatMap((id) => {
-    const project = projects.find((candidate) => candidate.id === id);
-    return project === undefined ? [] : [project];
-  });
+  const locale = route.locale;
   const hasRotation = projects.length > 1;
   const externalPause = suspended || pageHidden || !visible || !leaseGranted;
+  const playsVideo = active?.preview.video !== undefined && !fallbackPoster && !reducedMotion;
 
-  // ----------------------------------------------------------------------------
   // Détecte reduced-motion après hydratation et impose une pause explicite.
-  // ----------------------------------------------------------------------------
   useEffect(() => {
     const query = window.matchMedia('(prefers-reduced-motion: reduce)');
-    // --------------------------------------------------------------------------
     // Synchronise la préférence de mouvement avec la machine Featured.
-    // --------------------------------------------------------------------------
     function syncMotion(): void {
       setReducedMotion(query.matches);
       dispatch({ type: query.matches ? 'pause' : 'resume' });
@@ -70,9 +67,7 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
     return () => query.removeEventListener('change', syncMotion);
   }, []);
 
-  // ----------------------------------------------------------------------------
   // Suspend la rotation hors viewport sans transformer le retour en reprise forcée.
-  // ----------------------------------------------------------------------------
   useEffect(() => {
     const element = sectionRef.current;
     if (element === null || typeof IntersectionObserver === 'undefined') return;
@@ -81,22 +76,16 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
     return () => observer.disconnect();
   }, []);
 
-  // ----------------------------------------------------------------------------
   // Suspend les médias lorsque l'onglet devient caché.
-  // ----------------------------------------------------------------------------
   useEffect(() => {
-    // --------------------------------------------------------------------------
     // Reflète document.hidden dans l'état local de suspension.
-    // --------------------------------------------------------------------------
     function syncVisibility(): void { setPageHidden(document.hidden); }
     syncVisibility();
     document.addEventListener('visibilitychange', syncVisibility);
     return () => document.removeEventListener('visibilitychange', syncVisibility);
   }, []);
 
-  // ----------------------------------------------------------------------------
   // Demande l'usage du lecteur uniquement lorsque la vidéo active peut jouer.
-  // ----------------------------------------------------------------------------
   useEffect(() => {
     if (active?.preview.video === undefined || reducedMotion || fallbackPoster) {
       setLeaseGranted(true);
@@ -106,32 +95,24 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
       videoRef.current?.pause();
       setLeaseGranted(false);
     });
-    // --------------------------------------------------------------------------
     // Recalcule l'accord quand un lecteur plus prioritaire apparaît ou disparaît.
-    // --------------------------------------------------------------------------
     function syncLease(): void { setLeaseGranted(lease.isGranted()); }
     const unsubscribe = coordinator.subscribe(syncLease);
     syncLease();
     return () => { unsubscribe(); lease.release(); };
   }, [active?.id, active?.preview.video, coordinator, fallbackPoster, reducedMotion]);
 
-  // ----------------------------------------------------------------------------
   // Agrège les causes externes de suspension dans la machine pure.
-  // ----------------------------------------------------------------------------
   useEffect(() => { dispatch({ type: 'suspend', value: externalPause }); }, [externalPause]);
 
-  // ----------------------------------------------------------------------------
   // Réinitialise repli et temporisations lorsqu'un autre projet devient actif.
-  // ----------------------------------------------------------------------------
   useEffect(() => {
     setFallbackPoster(false);
     clearTimers(posterTimerRef, stallTimerRef);
     return () => clearTimers(posterTimerRef, stallTimerRef);
   }, [active?.id]);
 
-  // ----------------------------------------------------------------------------
   // Démarre la vidéo active ou le timer poster selon le média disponible.
-  // ----------------------------------------------------------------------------
   useEffect(() => {
     clearTimers(posterTimerRef, stallTimerRef);
     const project = active;
@@ -154,65 +135,165 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
     );
   }, [active, fallbackPoster, reducedMotion, state.suspended, state.userPaused]);
 
-  // ----------------------------------------------------------------------------
+  // Aligne la barre de progression du titre actif sur la lecture réelle de la vidéo.
+  useEffect(() => {
+    if (!playsVideo) return;
+    let frame = 0;
+    // Recopie la position de lecture à chaque image affichée.
+    function tick(): void {
+      const video = videoRef.current;
+      const bar = progressRef.current;
+      if (video !== null && bar !== null && video.duration > 0) bar.style.transform = `scaleX(${video.currentTime / video.duration})`;
+      frame = requestAnimationFrame(tick);
+    }
+    frame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(frame);
+  }, [playsVideo, active?.id]);
+
+  // Sur téléphone, une rotation automatique fait défiler la piste jusqu'au projet actif.
+  useEffect(() => {
+    const track = slidesRef.current;
+    if (track === null || track.scrollWidth <= track.clientWidth) return;
+    const slide = track.children[state.active] as HTMLElement | undefined;
+    if (slide === undefined || Math.abs(track.scrollLeft - slide.offsetLeft + track.offsetLeft) < 4) return;
+    track.scrollTo({ left: slide.offsetLeft - track.offsetLeft, behavior: reducedMotion ? 'auto' : 'smooth' });
+  }, [state.active, reducedMotion]);
+
+  // Arrête le repli « stall » dès que la vidéo joue réellement.
+  function handlePlaying(): void {
+    if (stallTimerRef.current !== null) clearTimeout(stallTimerRef.current);
+    stallTimerRef.current = null;
+  }
+
   // Passe au projet suivant lorsque la vidéo active se termine.
-  // ----------------------------------------------------------------------------
   function handleEnded(): void {
     clearTimers(posterTimerRef, stallTimerRef);
     dispatch({ type: 'ended' });
   }
 
-  // ----------------------------------------------------------------------------
   // Convertit une erreur vidéo en poster temporisé plutôt qu'en blocage.
-  // ----------------------------------------------------------------------------
   function handleVideoError(): void {
     videoRef.current?.pause();
     setFallbackPoster(true);
   }
 
-  // ----------------------------------------------------------------------------
   // Sélectionne un projet manuellement et désactive la reprise implicite.
-  // ----------------------------------------------------------------------------
   function selectProject(index: number): void { dispatch({ type: 'manual', index }); }
 
-  // ----------------------------------------------------------------------------
+  // Le survol d'un titre change la scène sans figer la rotation de l'utilisateur.
+  function previewProject(index: number): void {
+    if (index === state.active) return;
+    const wasPaused = state.userPaused;
+    dispatch({ type: 'manual', index });
+    if (!wasPaused) dispatch({ type: 'resume' });
+  }
+
   // Bascule la pause utilisateur, distincte des suspensions externes.
-  // ----------------------------------------------------------------------------
   function toggleRotation(): void { dispatch({ type: state.userPaused ? 'resume' : 'pause' }); }
+
+  // Le glissement au doigt choisit la diapositive la plus visible.
+  function handleTrackScroll(event: UIEvent<HTMLDivElement>): void {
+    const track = event.currentTarget;
+    if (track.scrollWidth <= track.clientWidth) return;
+    const slides = [...track.children] as HTMLElement[];
+    let closest = 0;
+    let distance = Infinity;
+    slides.forEach((slide, index) => {
+      const gap = Math.abs(slide.offsetLeft - track.offsetLeft - track.scrollLeft);
+      if (gap < distance) { distance = gap; closest = index; }
+    });
+    if (closest !== state.active && distance < track.clientWidth / 3) selectProject(closest);
+  }
 
   if (active === undefined) return null;
 
   return (
-    <section ref={sectionRef} className="featured-carousel" data-featured data-active-project={active.id}
+    <section ref={sectionRef} className="featured-stage" data-featured data-active-project={active.id}
       onPointerEnter={() => dispatch({ type: 'hover', value: true })}
       onPointerLeave={() => dispatch({ type: 'hover', value: false })}
-      onFocusCapture={() => dispatch({ type: 'keyboard-focus' })}
+      onFocusCapture={(event) => { if ((event.target as HTMLElement).matches(':focus-visible')) dispatch({ type: 'keyboard-focus' }); }}
       aria-labelledby="featured-title">
-      <div className="section-heading featured-carousel__heading">
-        <h2 id="featured-title">{messages.featured}</h2>
-        <div className="featured-carousel__controls">
-          {hasRotation && <span className="featured-carousel__counter">{state.active + 1} / {projects.length}</span>}
-          {hasRotation && <button type="button" onClick={() => selectProject(state.active - 1)} aria-label={messages.previousProject}>‹</button>}
-          {hasRotation && <button type="button" onClick={toggleRotation}>{state.userPaused ? messages.resumeRotation : messages.pauseRotation}</button>}
-          {hasRotation && <button type="button" onClick={() => selectProject(state.active + 1)} aria-label={messages.nextProject}>›</button>}
+      <h2 id="featured-title" className="sr-only">{messages.featured}</h2>
+      <div ref={slidesRef} className="featured-stage__slides" onScroll={handleTrackScroll}>
+        {projects.map((project, index) => {
+          const isActive = index === state.active;
+          const href = formatRoute({ ...route, projectId: project.id }, base);
+          return (
+            <article key={project.id} className={isActive ? 'featured-slide featured-slide--active' : 'featured-slide'} aria-hidden={isActive ? undefined : true}>
+              <div className="featured-slide__media" data-vt-media={project.id}>
+                <img src={assetUrl(project.preview.poster, base)} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
+                {isActive && playsVideo && project.preview.video !== undefined && (
+                  <video key={project.id} ref={videoRef} className="featured-slide__video" muted playsInline preload="metadata"
+                    poster={assetUrl(project.preview.poster, base)} onPlaying={handlePlaying} onEnded={handleEnded} onError={handleVideoError} aria-hidden="true">
+                    <source src={assetUrl(project.preview.video, base)} />
+                  </video>
+                )}
+              </div>
+              <a className="featured-slide__caption" href={href} tabIndex={isActive ? undefined : -1}
+                onClick={(event) => handleOpen(event, project.id, `featured-slide-${project.id}`)} id={`featured-slide-${project.id}`}>
+                <strong>{project.name}</strong>
+                <span>{project.tagline[locale]}</span>
+                <ProjectTags categoryLabels={project.categoryLabels[locale]} status={project.status} stack={project.topStack.slice(0, 1)} locale={locale} />
+              </a>
+            </article>
+          );
+        })}
+      </div>
+      <ol className="featured-stage__index">
+        {projects.map((project, index) => {
+          const isActive = index === state.active;
+          return (
+            <li key={project.id}>
+              <a id={`featured-title-${project.id}`} className="featured-title" href={formatRoute({ ...route, projectId: project.id }, base)}
+                aria-current={isActive ? 'true' : undefined} data-nav=""
+                onMouseEnter={() => previewProject(index)} onFocus={() => { if (index !== state.active) selectProject(index); }}
+                onClick={(event) => handleOpen(event, project.id, `featured-title-${project.id}`)}>
+                <span className="featured-title__name">{project.name}</span>
+                <span className="featured-title__meta" aria-hidden={isActive ? undefined : true}>
+                  <span>
+                    <span className="featured-title__tagline">{project.tagline[locale]}</span>
+                    <ProjectTags categoryLabels={project.categoryLabels[locale]} status={project.status} stack={project.topStack} locale={locale} />
+                    <span className="featured-title__progress">
+                      {isActive && <i key={`${project.id}-${playsVideo}`} ref={progressRef}
+                        style={playsVideo || state.userPaused ? undefined : { animationDuration: `${project.preview.posterDurationMs ?? DEFAULT_POSTER_MS}ms` }}
+                        className={playsVideo || state.userPaused ? undefined : 'is-timed'} />}
+                    </span>
+                  </span>
+                </span>
+              </a>
+            </li>
+          );
+        })}
+      </ol>
+      {hasRotation && (
+        <div className="featured-stage__controls">
+          <ol className="featured-stage__dots" aria-hidden="true">
+            {projects.map((project, index) => <li key={project.id} className={index === state.active ? 'is-active' : undefined} />)}
+          </ol>
+          <button type="button" onClick={() => selectProject(state.active - 1)} aria-label={messages.previousProject} data-nav="">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10.5 2.5 5 8l5.5 5.5" /></svg>
+          </button>
+          <button type="button" onClick={toggleRotation} aria-label={state.userPaused ? messages.resumeRotation : messages.pauseRotation} data-nav="">
+            {state.userPaused
+              ? <svg viewBox="0 0 16 16" aria-hidden="true"><path className="is-filled" d="M4.5 2.5v11l9-5.5z" /></svg>
+              : <svg viewBox="0 0 16 16" aria-hidden="true"><path className="is-filled" d="M3.5 2.5h3v11h-3zM9.5 2.5h3v11h-3z" /></svg>}
+          </button>
+          <button type="button" onClick={() => selectProject(state.active + 1)} aria-label={messages.nextProject} data-nav="">
+            <svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 2.5 11 8l-5.5 5.5" /></svg>
+          </button>
         </div>
-      </div>
-      <div className="featured-grid">
-        {windowProjects.map((project, index) => (
-          <div key={project.id} className={index === 0 ? 'featured-slot featured-slot--active' : 'featured-slot'}>
-            <ProjectCard project={project} route={route} base={base} variant="featured" onOpen={onOpen} />
-            {index === 0 && project.preview.video !== undefined && !fallbackPoster && !reducedMotion && (
-              <video key={project.id} ref={videoRef} className="featured-carousel__video" muted playsInline preload="metadata"
-                poster={assetUrl(project.preview.poster, base)} onEnded={handleEnded} onError={handleVideoError} aria-hidden="true">
-                <source src={assetUrl(project.preview.video, base)} />
-              </video>
-            )}
-            {index > 0 && <button type="button" className="featured-carousel__select" onClick={() => selectProject(state.active + index)}>{messages.readPreview}</button>}
-          </div>
-        ))}
-      </div>
+      )}
     </section>
   );
+
+  // --------------------------------------------------------------------------
+  // Ouvre la fiche en popin, sauf clic modifié qui garde le comportement du lien.
+  // --------------------------------------------------------------------------
+  function handleOpen(event: MouseEvent<HTMLAnchorElement>, projectId: string, triggerId: string): void {
+    if (onOpen === undefined || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    onOpen(projectId, triggerId);
+  }
 }
 
 // ----------------------------------------------------------------------------

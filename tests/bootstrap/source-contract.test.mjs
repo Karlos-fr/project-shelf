@@ -121,7 +121,9 @@ test('branche Featured sur vidéo, repli poster et contrôle utilisateur', async
   assert.match(source, /muted playsInline preload="metadata"/);
   assert.doesNotMatch(source, /<video[^>]*\sloop/);
   assert.match(source, /pauseRotation|resumeRotation/);
-  assert.match(source, /readPreview/);
+  // Direction « Écran » : survoler ou focaliser un titre de l'index choisit l'aperçu.
+  assert.match(source, /onMouseEnter=\{\(\) => previewProject\(index\)\}/);
+  assert.match(source, /onFocus=/);
   assert.match(source, /IntersectionObserver/);
   assert.match(source, /visibilitychange/);
   const app = await readFile('src/components/ShowcaseApp.tsx', 'utf8');

@@ -8,7 +8,7 @@ import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import type { ProjectSummary } from '../domain/project.ts';
 import { formatProjectDate } from '../domain/locale.ts';
 import { assetUrl, formatRoute, type RouteState } from '../domain/routes.ts';
-import { MESSAGES } from '../i18n/messages.ts';
+import ProjectTags from './ProjectTags.tsx';
 import { useMediaCoordinator } from '../media/context.tsx';
 import { tryPlay } from '../media/playback.ts';
 
@@ -127,8 +127,8 @@ export default function ProjectCard({ project, route, base, variant, onOpen }: P
     <article className={`project-card project-card--${variant}`} data-project-card={project.id}
       onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
       <a id={triggerId} className="project-card__link" href={target} data-project-link={project.id}
-        aria-label={`${project.name} — ${project.tagline[locale]}`} onClick={handleClick}>
-        <span className="project-card__media">
+        aria-label={`${project.name} — ${project.tagline[locale]}`} onClick={handleClick} data-nav="">
+        <span className="project-card__media" data-vt-media={project.id}>
           <img src={assetUrl(project.preview.poster, base)} alt="" loading={variant === 'featured' ? 'eager' : 'lazy'} style={{ objectPosition: position }} />
           {variant === 'grid' && canPreview && project.preview.video !== undefined && (
             <video ref={videoRef} className={playing ? 'project-card__preview project-card__preview--playing' : 'project-card__preview'}
@@ -140,14 +140,11 @@ export default function ProjectCard({ project, route, base, variant, onOpen }: P
         <span className="project-card__body">
           <strong className="project-card__name" title={project.name}>{project.name}</strong>
           <span className="project-card__tagline">{project.tagline[locale]}</span>
-          <span className="project-card__meta">
-            <span className="project-card__categories">{project.categoryLabels[locale].join(' · ')}</span>
-            <time dateTime={project.updatedAt}>{formatProjectDate(project.updatedAt, locale)}</time>
-          </span>
-          {/* Appel visuel de la scène Featured ; le nom accessible reste porté par le lien. */}
-          {variant === 'featured' && <span className="project-card__cta" aria-hidden="true">{MESSAGES[locale].viewProject}</span>}
+          <time className="project-card__date" dateTime={project.updatedAt}>{formatProjectDate(project.updatedAt, locale)}</time>
         </span>
       </a>
+      {/* Les étiquettes restent hors du lien : une liste ne peut pas vivre dans un <a>. */}
+      <ProjectTags categoryLabels={project.categoryLabels[locale]} status={project.status} stack={project.topStack.slice(0, 1)} locale={locale} />
     </article>
   );
 }

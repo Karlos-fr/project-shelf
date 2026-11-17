@@ -1,52 +1,46 @@
 /* ============================================================================
- * DesignTokens — Jetons visuels « Cinéma » de ProjectShelf
+ * DesignTokens — Jetons visuels « Écran » de ProjectShelf
  * ----------------------------------------------------------------------------
- * Ce fichier centralise thème sombre, accent, typographie, rayons, ombres et
- * courbes d'animation. Les composants n'introduisent pas de thème par projet.
- * L'accent global #4DA3FF approuvé en T0 reste la seule couleur d'action.
+ * Ce fichier centralise thème sombre, typographie variable, rayons et courbes.
+ * La couleur vient des médias des projets : l'interface reste neutre, avec un
+ * seul repère clair pour le focus, comme un launcher de télévision.
  * ========================================================================= */
 :root {
   color-scheme: dark;
-  /* Noir profond de salle de projection : les visuels des projets dominent. */
-  --background: #050608;
-  /* Surface translucide des panneaux posés sur le fond. */
-  --surface: rgb(255 255 255 / 4%);
-  /* Surface secondaire des contrôles et vignettes. */
-  --surface-raised: rgb(255 255 255 / 8%);
-  /* Surface opaque des couches superposées (popin, listes déroulantes). */
-  --surface-solid: #0c0e13;
-  /* Fond des médias avant chargement. */
-  --media-background: #0b0d12;
-  /* Filet fin, présent sans dominer les médias. */
-  --border: rgb(255 255 255 / 9%);
-  /* Filet renforcé au survol et sur les contrôles actifs. */
-  --border-strong: rgb(255 255 255 / 18%);
-  /* Texte principal à contraste élevé. */
-  --text: #ffffff;
-  /* Texte secondaire pour accroches et métadonnées. */
-  --muted: rgb(255 255 255 / 68%);
-  /* Texte tertiaire des libellés techniques. */
-  --subtle: rgb(255 255 255 / 48%);
-  /* Accent global unique choisi pour les actions (T0). */
-  --accent: #4da3ff;
-  /* Halo de l'accent pour ombres lumineuses. */
-  --accent-glow: rgb(77 163 255 / 55%);
-  /* Texte sombre utilisé sur les surfaces d'accent. */
-  --on-accent: #061423;
-  /* Police unique, variable : graisses 800 pour l'affiche, 400 pour le texte. */
-  --font-sans: "Bricolage Grotesque Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Fond quasi noir légèrement chaud, sur lequel les vidéos portent la couleur. */
+  --background: #0a0b0d;
+  /* Surface surélevée des contrôles et vignettes en attente. */
+  --surface: #15171a;
+  /* Surface des médias avant chargement. */
+  --media-background: #000000;
+  /* Filet fin entre zones. */
+  --border: #24262a;
+  /* Filet des contrôles posés sur une image. */
+  --border-on-media: rgb(242 241 238 / 28%);
+  /* Texte principal, blanc cassé. */
+  --text: #f2f1ee;
+  /* Texte secondaire : accroches et descriptions. */
+  --muted: #b7b5b0;
+  /* Texte tertiaire : libellés techniques et compteurs. */
+  --subtle: #807e79;
+  /* Pastille de statut stable. */
+  --status-stable: #6fd39a;
+  /* Pastille de statut en cours. */
+  --status-active: #f0b75e;
+  /* Pastille de statut prototype ou archivé. */
+  --status-other: #9a98a0;
+  /* Police variable unique : la largeur (wdth) porte l'animation des titres. */
+  --font-sans: "Mona Sans Variable", "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  /* Police à chasse fixe des tags et libellés techniques. */
+  --font-mono: "IBM Plex Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
   /* Largeur maximale de contenu à quatre cartes. */
   --content-width: 92rem;
-  /* Marge latérale de la scène plein écran, alignée sur le contenu. */
-  --stage-gutter: max(1rem, calc((100vw - var(--content-width)) / 2));
-  /* Rayon commun des cartes et panneaux. */
-  --radius: .85rem;
-  /* Rayon compact des boutons et champs. */
-  --radius-small: .65rem;
-  /* Ombre profonde des surfaces superposées. */
-  --shadow: 0 2.5rem 6rem -1.5rem rgb(0 0 0 / 80%);
-  /* Ombre des cartes agrandies au survol, avec anneau d'accent. */
-  --shadow-lift: 0 1.6rem 3.2rem -.8rem rgb(0 0 0 / 85%), 0 0 0 2px var(--accent);
+  /* Marge latérale commune, alignée sur le contenu quel que soit l'écran. */
+  --gutter: max(1rem, env(safe-area-inset-left, 0px), calc((100vw - var(--content-width)) / 2));
+  /* Rayon des médias et cartes. */
+  --radius: .8rem;
+  /* Rayon compact des tags. */
+  --radius-small: .4rem;
   /* Courbe d'animation douce, sans rebond. */
   --ease-out: cubic-bezier(.2, .75, .2, 1);
 }

@@ -1,11 +1,12 @@
 /* ============================================================================
- * GlobalStyles — Base typographique, ambiance et comportement général
+ * GlobalStyles — Base typographique et comportement général
  * ----------------------------------------------------------------------------
- * Ce fichier charge la police auto-hébergée, applique les jetons, l'ambiance du
- * fond et les primitives accessibles. Les styles de composants restent dans
- * components.css pour préserver des responsabilités nettes.
+ * Ce fichier charge les polices auto-hébergées, applique les jetons et les
+ * primitives accessibles. Les styles de composants restent dans components.css.
  * ========================================================================= */
-@import '@fontsource-variable/bricolage-grotesque/index.css';
+@import '@fontsource-variable/mona-sans/standard.css';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
 @import './tokens.css';
 
 * { box-sizing: border-box; }
@@ -13,47 +14,40 @@ html { min-width: 20rem; background: var(--background); scrollbar-color: rgb(255
 body {
   margin: 0;
   min-height: 100vh;
-  /* La scène Featured déborde volontairement du conteneur : pas de défilement horizontal. */
+  /* La scène déborde volontairement du conteneur : pas de défilement horizontal. */
   overflow-x: hidden;
-  background:
-    radial-gradient(70rem 30rem at 50% -12%, rgb(77 163 255 / 9%), transparent 70%),
-    var(--background);
+  background: var(--background);
   color: var(--text);
   font-family: var(--font-sans);
   font-size: 1rem;
-  line-height: 1.55;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
-::selection { background: rgb(77 163 255 / 40%); color: #fff; }
+::selection { background: rgb(242 241 238 / 85%); color: var(--background); }
 button, input, select { font: inherit; }
 a { color: inherit; }
 img, video { display: block; max-width: 100%; }
 button, a, input, select { -webkit-tap-highlight-color: transparent; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+/* Focus façon télécommande : un anneau clair et net, visible de loin. */
+:focus-visible { outline: 3px solid var(--text); outline-offset: 4px; border-radius: .6rem; }
 .sr-only {
   position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
   overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0;
 }
 
-/* Apparition douce partagée par le titre, la scène et les cartes. La propriété
- * translate (et non transform) laisse libre le zoom des cartes au survol. */
+/* Apparition douce des cartes. translate (et non transform) laisse libre le survol. */
 @keyframes rise-in {
-  from { opacity: 0; translate: 0 1rem; }
+  from { opacity: 0; translate: 0 .75rem; }
   to { opacity: 1; translate: none; }
 }
-/* Lent travelling avant sur l'image de la scène Featured. */
+/* Lent travelling avant sur le média de la scène. */
 @keyframes stage-drift {
-  from { transform: scale(1.08); }
-  to { transform: scale(1); }
+  from { transform: scale(1.02); }
+  to { transform: scale(1.09); }
 }
-/* Entrée de la popin : léger zoom avant et fondu. */
-@keyframes dialog-in {
-  from { opacity: 0; transform: translateY(1rem) scale(.98); }
-  to { opacity: 1; transform: none; }
-}
-/* Fondu du voile derrière la popin. */
-@keyframes backdrop-in {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* Remplissage de la barre de progression d'un projet sans vidéo. */
+@keyframes progress-fill {
+  from { transform: scaleX(0); }
+  to { transform: scaleX(1); }
 }

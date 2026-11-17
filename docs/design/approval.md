@@ -45,3 +45,17 @@ Les 57 assertions de la revue T0 proviennent de la session précédente, sur le 
 - popin avec voile flouté et entrée animée ; animations désactivées par `prefers-reduced-motion`.
 
 Les jetons du tableau ci-dessus restent la trace historique de T0 ; les valeurs en vigueur sont dans `src/styles/tokens.css`. Les contrastes de la nouvelle direction n'ont pas fait l'objet d'un audit complet.
+
+## Direction « Écran » — 17 novembre 2026
+
+L'auteur a jugé la direction « Cinéma » trop générique (« soupe IA ») : accroche trop grande, texte et bouton qui recouvraient les aperçus, Featured impossible à glisser au doigt, tags peu visibles. Après une recherche sur l'UX récente et un prototype interactif validé, **la direction « Écran » remplace « Cinéma »** :
+
+- une scène vidéo plein cadre pilotée par un **index typographique** : survoler ou focaliser un titre change la vidéo ; le titre actif s'élargit grâce à la largeur variable de Mona Sans ;
+- navigation aux **flèches comme une télécommande** (anneau de focus clair) ; sur téléphone, la scène **se fait glisser au doigt** avec des points de position ;
+- accroche réduite à une ligne, plus de bouton « Voir le projet » sur l'image : chaque titre est le lien ;
+- **tags visibles** partout : catégorie en plein, statut avec pastille, technologies en police à chasse fixe ;
+- fiche en plein écran, ouverte par une transition partagée (View Transitions) depuis le média cliqué ;
+- aucune couleur décorative, ni halo, dégradé décoratif ou verre : la couleur vient des médias des projets. L'accent bleu `#4DA3FF` de T0 n'est plus utilisé ;
+- polices auto-hébergées : Mona Sans (variable, largeur 75–125 %) et IBM Plex Mono.
+
+Les médias restent en 16:9 dans la grille et la grille desktop garde quatre colonnes. Les animations sont coupées avec `prefers-reduced-motion`. Les contrastes n'ont pas fait l'objet d'un audit complet.
