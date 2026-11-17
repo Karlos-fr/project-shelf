@@ -23,8 +23,8 @@ export const PROJECT_CATALOGUE: Catalogue = {
       categories: ['android-tv-apps'],
       createdAt: '2026-11-16',
       updatedAt: '2026-11-17',
-      // Version 0.1.0 en cours : aucune version publiée pour l'instant.
-      status: 'active',
+      // Version 1.0.0 publiée le 2026-11-17.
+      status: 'stable',
       repositoryVisibility: 'public',
       repositoryUrl: 'https://github.com/Karlos-fr/lactea',
       hidden: false,
@@ -61,8 +61,8 @@ export const PROJECT_CATALOGUE: Catalogue = {
           height: 862,
         },
       ],
-      // Le lien de version téléchargeable sera ajouté à la première release.
       links: [
+        { type: 'release', url: 'https://github.com/Karlos-fr/lactea/releases/tag/v1.0.0' },
         { type: 'documentation', url: 'https://github.com/Karlos-fr/lactea/blob/main/doc/BUILDING.md' },
       ],
       content: {
@@ -81,7 +81,6 @@ export const PROJECT_CATALOGUE: Catalogue = {
             'Six languages: EN, FR, DE, IT, ES, SV',
           ],
           limitations: [
-            'No release published yet.',
             'Track title and auto-launch need permissions granted once from a computer (adb).',
             'Sound sent to Bluetooth devices may not be picked up.',
             'Tested on one TV only (Sony BRAVIA, Google TV).',
@@ -103,7 +102,6 @@ export const PROJECT_CATALOGUE: Catalogue = {
             'Six langues : anglais, français, allemand, italien, espagnol, suédois',
           ],
           limitations: [
-            'Aucune version publiée pour l\'instant.',
             'Le titre du morceau et l\'ouverture automatique demandent des autorisations à accorder une fois depuis un ordinateur (adb).',
             'Le son envoyé vers un appareil Bluetooth peut ne pas être capté.',
             'Testé sur une seule TV (Sony BRAVIA, Google TV).',
