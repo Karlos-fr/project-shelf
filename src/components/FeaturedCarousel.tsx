@@ -11,6 +11,7 @@ import type { ProjectSummary } from '../domain/project.ts';
 import { assetUrl, formatRoute, type RouteState } from '../domain/routes.ts';
 import { createFeaturedState, reduceFeatured } from '../featured/machine.ts';
 import { MESSAGES } from '../i18n/messages.ts';
+import { averageZones, canReadPixels, crossOriginFor, glowColor } from '../media/ambilight.ts';
 import { useMediaCoordinator } from '../media/context.tsx';
 import { tryPlay } from '../media/playback.ts';
 import ProjectTags from './ProjectTags.tsx';
@@ -29,6 +30,8 @@ const DEFAULT_POSTER_MS = 6000;
 const MEDIA_STALL_MS = 8000;
 // Priorité la plus basse dans l'arbitre média global.
 const FEATURED_MEDIA_PRIORITY = 10;
+// Fréquence d'échantillonnage des couleurs Ambilight, en millisecondes.
+const AMBILIGHT_SAMPLE_MS = 250;
 
 // ----------------------------------------------------------------------------
 // Rend la scène : médias superposés, index des titres et commandes de rotation.
@@ -150,6 +153,41 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
     return () => cancelAnimationFrame(frame);
   }, [playsVideo, active?.id]);
 
+  // Ambilight : la lueur autour de la scène reprend les couleurs de l'image en cours.
+  useEffect(() => {
+    const section = sectionRef.current;
+    if (section === null || active === undefined || typeof document.createElement('canvas').getContext !== 'function') return;
+    const canvas = document.createElement('canvas');
+    canvas.width = 16;
+    canvas.height = 9;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    if (context === null) return;
+    const activeSection = section;
+    const drawing = context;
+    // Lit l'image courante (vidéo en lecture, sinon poster) et met à jour la lueur.
+    function sample(): boolean {
+      const video = videoRef.current;
+      const poster = activeSection.querySelector<HTMLImageElement>('.featured-slide--active .featured-slide__media img');
+      const source = video !== null && video.readyState >= 2 ? video : poster !== null && poster.complete && poster.naturalWidth > 0 ? poster : null;
+      if (source === null) return true;
+      const src = source instanceof HTMLVideoElement ? (source.currentSrc || source.querySelector('source')?.src || '') : source.currentSrc || source.src;
+      if (!canReadPixels(src, window.location.origin)) return false;
+      try {
+        drawing.drawImage(source, 0, 0, canvas.width, canvas.height);
+        const [left, right] = averageZones(drawing.getImageData(0, 0, canvas.width, canvas.height).data, canvas.width, canvas.height);
+        activeSection.style.setProperty('--ambilight-left', glowColor(left));
+        activeSection.style.setProperty('--ambilight-right', glowColor(right));
+        return true;
+      } catch {
+        // Image non lisible (CORS refusé) : la lueur reste neutre, la vidéo continue.
+        return false;
+      }
+    }
+    if (!sample()) return;
+    const timer = setInterval(() => { if (!sample()) clearInterval(timer); }, AMBILIGHT_SAMPLE_MS);
+    return () => clearInterval(timer);
+  }, [active, playsVideo]);
+
   // Sur téléphone, une rotation automatique fait défiler la piste jusqu'au projet actif.
   useEffect(() => {
     const track = slidesRef.current;
@@ -214,6 +252,7 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
       onFocusCapture={(event) => { if ((event.target as HTMLElement).matches(':focus-visible')) dispatch({ type: 'keyboard-focus' }); }}
       aria-labelledby="featured-title">
       <h2 id="featured-title" className="sr-only">{messages.featured}</h2>
+      <div className="featured-stage__ambilight" aria-hidden="true" />
       <div ref={slidesRef} className="featured-stage__slides" onScroll={handleTrackScroll}>
         {projects.map((project, index) => {
           const isActive = index === state.active;
@@ -221,9 +260,9 @@ export default function FeaturedCarousel({ projects, route, base, suspended, onO
           return (
             <article key={project.id} className={isActive ? 'featured-slide featured-slide--active' : 'featured-slide'} aria-hidden={isActive ? undefined : true}>
               <div className="featured-slide__media" data-vt-media={project.id}>
-                <img src={assetUrl(project.preview.poster, base)} alt="" loading={index === 0 ? 'eager' : 'lazy'} />
+                <img src={assetUrl(project.preview.poster, base)} alt="" loading={index === 0 ? 'eager' : 'lazy'} crossOrigin={crossOriginFor(assetUrl(project.preview.poster, base))} />
                 {isActive && playsVideo && project.preview.video !== undefined && (
-                  <video key={project.id} ref={videoRef} className="featured-slide__video" muted playsInline preload="metadata"
+                  <video key={project.id} ref={videoRef} className="featured-slide__video" muted playsInline preload="metadata" crossOrigin={crossOriginFor(assetUrl(project.preview.video, base))}
                     poster={assetUrl(project.preview.poster, base)} onPlaying={handlePlaying} onEnded={handleEnded} onError={handleVideoError} aria-hidden="true">
                     <source src={assetUrl(project.preview.video, base)} />
                   </video>

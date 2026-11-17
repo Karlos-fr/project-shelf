@@ -97,7 +97,7 @@ test('préserve la continuité clavier autour de la fiche modale', async functio
   assert.match(modal, /project-modal__languages/);
   // Le changement de langue passe par une transition animée qui délègue au contrôleur.
   assert.match(app, /onSwitchLocale=\{switchLocaleAnimated\}/);
-  assert.match(app, /const \{ openProject, switchLocale \} = controller;/);
+  assert.match(app, /const \{[^}]*\bswitchLocale\b[^}]*\} = controller;/);
   assert.match(app, /flushSync\(\(\) => switchLocale\(locale\)\)/);
 });
 

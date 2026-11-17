@@ -12,7 +12,7 @@ import type { SiteConfig } from '../config/site.ts';
 import type { Locale } from '../domain/locale.ts';
 import type { Category, ProjectSummary, PublicProject } from '../domain/project.ts';
 import { selectProjects, sortCategories } from '../domain/gallery.ts';
-import type { RouteState } from '../domain/routes.ts';
+import type { GalleryState, RouteState } from '../domain/routes.ts';
 import { selectFeaturedProjects } from '../featured/order.ts';
 import { MESSAGES } from '../i18n/messages.ts';
 import { MediaCoordinatorContext } from '../media/context.tsx';
@@ -53,7 +53,7 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
   const messages = MESSAGES[route.locale];
   const projectForFallback = !controller.hydrated && initialProject?.id === route.projectId ? initialProject : undefined;
   const [introLead, introRest] = splitIntro(config.intro[route.locale]);
-  const { openProject, switchLocale } = controller;
+  const { openProject, switchLocale, updateGallery } = controller;
 
   // Active la navigation aux flèches une seule fois, après hydratation.
   useEffect(() => installSpatialNavigation(document), []);
@@ -72,6 +72,23 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
     transition.ready.catch(() => undefined);
     transition.finished.catch(() => undefined).finally(() => root.classList.remove('is-switching-locale'));
   }, [route.locale, switchLocale]);
+
+  // Filtre ou trie avec une transition : chaque carte glisse vers sa nouvelle place,
+  // celles qui sortent se réduisent, celles qui entrent apparaissent. La saisie de
+  // recherche reste instantanée pour ne pas animer chaque frappe.
+  const updateGalleryAnimated = useCallback((next: GalleryState): void => {
+    const searchOnly = next.q !== gallery.q && next.sort === gallery.sort && next.categories.join(',') === gallery.categories.join(',');
+    const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (searchOnly || typeof document.startViewTransition !== 'function' || reduced) {
+      updateGallery(next);
+      return;
+    }
+    const root = document.documentElement;
+    root.classList.add('is-filtering');
+    const transition = document.startViewTransition(() => flushSync(() => updateGallery(next)));
+    transition.ready.catch(() => undefined);
+    transition.finished.catch(() => undefined).finally(() => root.classList.remove('is-filtering'));
+  }, [gallery, updateGallery]);
 
   // Ouvre une fiche ; le média cliqué devient celui de la popin (View Transitions).
   const openWithTransition = useCallback((projectId: string, triggerId: string): void => {
@@ -117,7 +134,7 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
         <section className="all-projects" aria-labelledby="all-projects-title">
           <div className="section-heading"><h2 id="all-projects-title" tabIndex={-1}>{messages.allProjects}</h2></div>
           <ProjectFilters categories={sortedCategories} locale={route.locale} state={gallery}
-            onChange={controller.updateGallery} onSearchCommit={controller.endSearchEdit} />
+            onChange={updateGalleryAnimated} onSearchCommit={controller.endSearchEdit} />
           <ProjectGrid projects={selected} route={route} base={config.base} onOpen={openWithTransition} />
         </section>
       </main>

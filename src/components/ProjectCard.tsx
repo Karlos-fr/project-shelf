@@ -4,7 +4,7 @@
 // La carte reste un véritable lien HTML pour SEO, clavier et nouvel onglet. Le
 // clic principal peut être intercepté après hydratation sans casser ces usages.
 // ============================================================================
-import { useEffect, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type CSSProperties, type MouseEvent, type PointerEvent } from 'react';
 import type { ProjectSummary } from '../domain/project.ts';
 import { formatProjectDate } from '../domain/locale.ts';
 import { assetUrl, formatRoute, type RouteState } from '../domain/routes.ts';
@@ -22,6 +22,8 @@ export type ProjectCardProps = {
 
 // Priorité du survol : supérieure au Featured décoratif, inférieure à la fiche.
 const HOVER_MEDIA_PRIORITY = 20;
+// Inclinaison maximale de la carte au survol, en degrés (horizontal, vertical).
+const TILT_MAX_DEG = [10, 8] as const;
 
 // ----------------------------------------------------------------------------
 // Rend poster, nom, accroche, catégories, date et preview desktop éventuelle.
@@ -37,6 +39,8 @@ export default function ProjectCard({ project, route, base, variant, onOpen }: P
   const [canPreview, setCanPreview] = useState(false);
   const [hovered, setHovered] = useState(false);
   const [playing, setPlaying] = useState(false);
+  const mediaRef = useRef<HTMLSpanElement>(null);
+  const tiltFrameRef = useRef(0);
 
   // ----------------------------------------------------------------------------
   // Active le hover vidéo seulement avec pointeur précis et animations autorisées.
@@ -121,14 +125,39 @@ export default function ProjectCard({ project, route, base, variant, onOpen }: P
   // ----------------------------------------------------------------------------
   // Termine immédiatement la preview lorsque le pointeur quitte la carte.
   // ----------------------------------------------------------------------------
-  function handlePointerLeave(): void { setHovered(false); }
+  function handlePointerLeave(): void {
+    setHovered(false);
+    cancelAnimationFrame(tiltFrameRef.current);
+    const media = mediaRef.current;
+    if (media !== null) for (const name of ['--tilt-x', '--tilt-y', '--shine-x', '--shine-y']) media.style.removeProperty(name);
+  }
+
+  // --------------------------------------------------------------------------
+  // Incline le média vers la souris et déplace son reflet ; jamais au doigt
+  // ni lorsque le visiteur a demandé moins de mouvements.
+  // --------------------------------------------------------------------------
+  function handlePointerMove(event: PointerEvent<HTMLElement>): void {
+    const media = mediaRef.current;
+    if (media === null || event.pointerType !== 'mouse' || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const box = media.getBoundingClientRect();
+    const x = Math.min(1, Math.max(0, (event.clientX - box.left) / box.width));
+    const y = Math.min(1, Math.max(0, (event.clientY - box.top) / box.height));
+    cancelAnimationFrame(tiltFrameRef.current);
+    tiltFrameRef.current = requestAnimationFrame(() => {
+      media.style.setProperty('--tilt-x', `${((x - 0.5) * TILT_MAX_DEG[0]).toFixed(2)}deg`);
+      media.style.setProperty('--tilt-y', `${((0.5 - y) * TILT_MAX_DEG[1]).toFixed(2)}deg`);
+      media.style.setProperty('--shine-x', `${(x * 100).toFixed(1)}%`);
+      media.style.setProperty('--shine-y', `${(y * 100).toFixed(1)}%`);
+    });
+  }
 
   return (
     <article className={`project-card project-card--${variant}`} data-project-card={project.id}
-      onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave}>
+      style={{ '--vt-card': `card-${project.id}` } as CSSProperties}
+      onPointerEnter={handlePointerEnter} onPointerLeave={handlePointerLeave} onPointerMove={handlePointerMove}>
       <a id={triggerId} className="project-card__link" href={target} data-project-link={project.id}
         aria-label={`${project.name} — ${project.tagline[locale]}`} onClick={handleClick} data-nav="">
-        <span className="project-card__media" data-vt-media={project.id}>
+        <span ref={mediaRef} className="project-card__media" data-vt-media={project.id}>
           <img src={assetUrl(project.preview.poster, base)} alt="" loading={variant === 'featured' ? 'eager' : 'lazy'} style={{ objectPosition: position }} />
           {variant === 'grid' && canPreview && project.preview.video !== undefined && (
             <video ref={videoRef} className={playing ? 'project-card__preview project-card__preview--playing' : 'project-card__preview'}

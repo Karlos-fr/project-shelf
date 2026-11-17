@@ -42,6 +42,18 @@ if (typeof window !== 'undefined' && typeof window.matchMedia !== 'function') {
 // Démonte les composants entre deux tests DOM pour éviter les fuites d'abonnements.
 // Effets de bord : nettoie le document de jsdom, uniquement lorsqu'il existe.
 // ----------------------------------------------------------------------------
+// ----------------------------------------------------------------------------
+// Remplace le canevas 2D non implémenté de jsdom par une absence explicite de
+// contexte : l'Ambilight de la scène s'arrête alors proprement, sans bruit d'erreur.
+// ----------------------------------------------------------------------------
+if (typeof HTMLCanvasElement !== 'undefined') {
+  Object.defineProperty(HTMLCanvasElement.prototype, 'getContext', {
+    configurable: true,
+    writable: true,
+    value: () => null,
+  });
+}
+
 afterEach(function cleanupRenderedComponents() {
   if (typeof document !== 'undefined') cleanup();
 });
