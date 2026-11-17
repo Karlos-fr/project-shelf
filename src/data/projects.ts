@@ -8,6 +8,7 @@
 import type { Catalogue } from '../domain/project.ts';
 
 // Bases des fichiers des dépôts de projets servis par GitHub.
+const QUAKE2JS_RAW = 'https://raw.githubusercontent.com/Karlos-fr/Quake-2-JS/master';
 const LACTEA_RAW = 'https://raw.githubusercontent.com/Karlos-fr/lactea/main';
 const PROSCENIUM_RAW = 'https://raw.githubusercontent.com/Karlos-fr/proscenium/main';
 
@@ -15,8 +16,106 @@ const PROSCENIUM_RAW = 'https://raw.githubusercontent.com/Karlos-fr/proscenium/m
 export const PROJECT_CATALOGUE: Catalogue = {
   categories: [
     { id: 'android-tv-apps', label: { en: 'Android TV apps', fr: 'Applications Android TV' } },
+    { id: 'games-ports', label: { en: 'Games & Ports', fr: 'Jeux et portages' } },
+    { id: 'web', label: { en: 'Web', fr: 'Web' } },
   ],
   projects: [
+    {
+      id: 'quake2js',
+      name: 'Quake2JS',
+      categories: ['games-ports', 'web'],
+      // Premier commit et création du dépôt GitHub.
+      createdAt: '2026-04-19',
+      updatedAt: '2026-11-17',
+      // Jouable en ligne, mais des corrections restent prévues (TODO.md).
+      status: 'active',
+      repositoryVisibility: 'public',
+      repositoryUrl: 'https://github.com/Karlos-fr/Quake-2-JS',
+      hidden: false,
+      featured: true,
+      featuredOrder: 1,
+      stack: ['TypeScript', 'Three.js', 'WebGPU / WebGL', 'Vite', 'Web Audio API', 'GitHub Pages'],
+      // Poster provisoire : la bannière du dépôt, en attendant le poster de jeu 16:9.
+      preview: {
+        poster: `${QUAKE2JS_RAW}/docs/assets/quake2js-banner.png`,
+        video: `${QUAKE2JS_RAW}/video/quake2js-presentation.mp4`,
+      },
+      media: [
+        {
+          type: 'video',
+          src: `${QUAKE2JS_RAW}/video/quake2js-presentation.mp4`,
+          poster: `${QUAKE2JS_RAW}/docs/assets/quake2js-banner.png`,
+          title: { en: 'Quake2JS — one-minute presentation', fr: 'Quake2JS — présentation en une minute' },
+          description: {
+            en: 'The game\'s startup demo, running in the browser at 1080p60.',
+            fr: 'La démo de démarrage du jeu, tournant dans le navigateur en 1080p60.',
+          },
+          durationSeconds: 60,
+          uploadDate: '2026-11-17',
+          width: 1920,
+          height: 1080,
+        },
+        {
+          type: 'image',
+          src: `${QUAKE2JS_RAW}/docs/assets/quake2js-banner.png`,
+          alt: { en: 'Quake II JS logo', fr: 'Logo de Quake II JS' },
+          width: 2172,
+          height: 724,
+        },
+      ],
+      links: [
+        { type: 'demo', url: 'https://karlos-fr.github.io/Quake-2-JS/' },
+        { type: 'documentation', url: 'https://github.com/Karlos-fr/Quake-2-JS#readme' },
+      ],
+      content: {
+        en: {
+          tagline: 'The original Quake II engine, ported line by line to TypeScript and running in your browser.',
+          description: 'Quake2JS is a browser port of id Software\'s open-source Quake II code. It is not a remake: the engine, game logic, client, server, file formats and renderer are carried over from the original C source into a modern TypeScript codebase, and they keep the original names so each function can be traced back to its source. A Three.js renderer draws the game with WebGPU, or WebGL when WebGPU is not available. The public build ships with the shareware data and can be played instantly on any modern browser, including on mobile.',
+          features: [
+            'TypeScript port of the original qcommon, client, server and game code',
+            'Three.js renderer with WebGPU and WebGL fallback',
+            'Virtual filesystem that mounts original .pak archives',
+            'Readers for the original BSP, MD2, PCX, WAL and PAK formats',
+            'Original menus, console, HUD, sound and save games',
+            'Startup demo loop and .cin cinematics with retail data',
+            'Touch controls on mobile',
+            'Shareware data included: playable instantly online',
+            'Optional renderer/FPS overlay (?hud=1)',
+          ],
+          limitations: [
+            'The public build only includes the shareware episode, so the full game needs your own retail pak0.pak.',
+            'Single-player only: there is no online multiplayer.',
+            'Rendering stays close to the original look; widescreen HUD, dynamic lighting and other modern enhancements are planned but not implemented.',
+            'A few gameplay details are still being corrected.',
+          ],
+          about: 'The goal was to see how far an AI coding assistant can go on a faithful, large-scale port. Instead of rewriting a Quake-like game, the project carries about 140 original C/H files into roughly 145,000 lines of TypeScript. A matrix-based audit maps every original function to its TypeScript counterpart.',
+        },
+        fr: {
+          tagline: 'Le moteur original de Quake II, porté ligne à ligne en TypeScript et jouable dans le navigateur.',
+          description: 'Quake2JS est un portage pour navigateur du code open source de Quake II publié par id Software. Ce n\'est pas un remake : le moteur, la logique de jeu, le client, le serveur, les formats de fichiers et le rendu sont transposés du C original vers une base TypeScript moderne, en gardant les noms d\'origine pour que chaque fonction reste traçable jusqu\'à sa source. Un moteur de rendu Three.js affiche le jeu en WebGPU, ou en WebGL quand WebGPU n\'est pas disponible. La version publique embarque les données shareware et se lance immédiatement dans n\'importe quel navigateur récent, y compris sur mobile.',
+          features: [
+            'Portage TypeScript du code original qcommon, client, serveur et jeu',
+            'Rendu Three.js en WebGPU, avec repli WebGL',
+            'Système de fichiers virtuel qui monte les archives .pak originales',
+            'Lecture des formats originaux BSP, MD2, PCX, WAL et PAK',
+            'Menus, console, HUD, son et sauvegardes d\'origine',
+            'Boucle de démos au démarrage et cinématiques .cin avec les données du jeu complet',
+            'Commandes tactiles sur mobile',
+            'Données shareware incluses : jouable immédiatement en ligne',
+            'Affichage optionnel du moteur de rendu et des FPS (?hud=1)',
+          ],
+          limitations: [
+            'La version publique ne contient que l\'épisode shareware : le jeu complet demande ton propre pak0.pak du jeu complet.',
+            'Le jeu est en solo uniquement, sans multijoueur en ligne.',
+            'Le rendu reste fidèle à l\'original ; le HUD adapté aux écrans larges, l\'éclairage dynamique et les autres améliorations modernes sont prévus mais pas encore faits.',
+            'Quelques détails de gameplay sont encore en cours de correction.',
+          ],
+          about: 'L\'objectif était de voir jusqu\'où un assistant de code IA peut aller sur un portage fidèle et de grande ampleur. Plutôt que de réécrire un jeu « à la Quake », le projet transpose environ 140 fichiers C/H originaux en près de 145 000 lignes de TypeScript. Un audit par matrices relie chaque fonction d\'origine à son équivalent TypeScript.',
+        },
+      },
+      application: { category: 'GameApplication', operatingSystems: ['Web browser'] },
+      indexable: true,
+    },
     {
       id: 'lactea',
       name: 'Lactea',
@@ -29,7 +128,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/lactea',
       hidden: false,
       featured: true,
-      featuredOrder: 1,
+      featuredOrder: 2,
       stack: ['Kotlin', 'Android TV / Google TV', 'C++ (JNI)', 'projectM 4.1.8 (fork)', 'OpenGL ES 3', 'Android NDK', 'CMake', 'Python'],
       // La démo complète sert aussi de vidéo d'aperçu, comme pour Proscenium.
       preview: {
@@ -125,7 +224,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
       repositoryUrl: 'https://github.com/Karlos-fr/proscenium',
       hidden: false,
       featured: true,
-      featuredOrder: 2,
+      featuredOrder: 3,
       stack: ['Java', 'Android SDK', 'Android TV / Google TV', 'aapt2 / d8 / apksigner', 'TMDB API', 'Open-Meteo', 'Python'],
       preview: {
         poster: `${PROSCENIUM_RAW}/images/banner.png`,
