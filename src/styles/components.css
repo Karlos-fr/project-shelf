@@ -130,6 +130,12 @@ main { padding: .25rem 0 3rem; }
  * Scène 3D pleine largeur, légende de l'objet sorti, puis index des liens : ce
  * dernier reste la navigation sans JavaScript et au clavier. */
 .shelf { margin-top: clamp(2.5rem, 6vw, 5rem); }
+/* Page autonome : l'étagère est seule, la scène prend presque tout l'écran. */
+.shelf-page__header { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 4.5rem; font-size: .9rem; }
+.shelf-page__header a { color: var(--muted); text-decoration: none; }
+.shelf-page__header a:hover { color: var(--text); }
+.shelf-page .shelf { margin-top: 0; }
+.shelf-page .shelf__stage { height: clamp(24rem, 70vh, 48rem); }
 .shelf__lead { margin: 0; color: var(--muted); }
 .shelf__stage { position: relative; height: clamp(22rem, 58vh, 40rem); margin-inline: calc(50% - 50vw); background: #0a0b0d; touch-action: pan-y; }
 .shelf__stage[data-state="idle"], .shelf__stage[data-state="failed"] { display: none; }

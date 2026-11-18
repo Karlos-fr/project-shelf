@@ -1,6 +1,10 @@
 # project-shelf
 A visual project showcase with video previews, rich project galleries, and bilingual SEO. Built with Astro, React, and TypeScript.
 
+**Vitrine :** https://karlos-fr.github.io/project-shelf/
+
+**L'étagère 3D :** https://karlos-fr.github.io/project-shelf/fr/shelf/ ([English](https://karlos-fr.github.io/project-shelf/en/shelf/)). C'est une version séparée de la vitrine, en Three.js temps réel (WebGPU, repli WebGL), avec les boîtes d'époque des projets. Elle est pensée pour un ordinateur : sur iPhone, Safari peut fermer la page faute de mémoire.
+
 ## État de la branche
 
 La direction visuelle T0 est approuvée par l'auteur. Les tâches T1 à T15 sont implémentées : vitrine Astro/React, fiches et popin, médias, Featured, SEO, portabilité et documentation éditoriale. Le 11 novembre 2026, la recette locale complète (contrats natifs, `astro check`, Vitest, build fixture, tests du build et Playwright Chromium) passe sur Windows. **Le catalogue réel est encore vide** : aucun projet n'est publié, et Firefox/WebKit, mobile réel, URL de production et Search Console restent à contrôler.
