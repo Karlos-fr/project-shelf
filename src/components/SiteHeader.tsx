@@ -1,8 +1,10 @@
 // ============================================================================
-// SiteHeader — Identité, GitHub et navigation linguistique de ProjectShelf
+// SiteHeader — Bandeau d'identité sur une ligne, façon affichage de télévision
 // ----------------------------------------------------------------------------
-// Les liens restent natifs et partageables. Après hydratation, un changement de
-// langue simple peut être intercepté par le contrôleur History.
+// Le pseudo GitHub, un voyant « à l'antenne » et une phrase dont la fin défile
+// tiennent sur une ligne. L'accroche complète reste dans le titre principal pour
+// les lecteurs d'écran et les moteurs de recherche. Les liens restent natifs ;
+// après hydratation, un changement de langue peut être intercepté par History.
 // ============================================================================
 import type { MouseEvent } from 'react';
 import type { SiteConfig } from '../config/site.ts';
@@ -21,10 +23,23 @@ export type SiteHeaderProps = {
 // ----------------------------------------------------------------------------
 export default function SiteHeader({ config, route, onSwitchLocale }: SiteHeaderProps) {
   const messages = MESSAGES[route.locale];
+  const handle = githubHandle(config.githubUrl);
+  const lines = [messages.rollLine1, messages.rollLine2, messages.rollLine3, messages.rollLine4];
   return (
     <header className="site-header">
-      <div className="site-header__identity">
-        <a className="site-name" href={formatRoute({ ...route, projectId: null }, config.base)}>{config.name}</a>
+      <a className="site-name" href={formatRoute({ ...route, projectId: null }, config.base)} data-nav="">
+        <span className="site-name__dot" aria-hidden="true" />{handle}
+      </a>
+      <div className="site-tagline">
+        {/* Le titre principal porte l'accroche complète ; la phrase qui défile reste
+            décorative et hors du titre pour ne pas être lue plusieurs fois. */}
+        <h1 id="hero-title" className="sr-only">{config.intro[route.locale]}</h1>
+        {/* La première ligne est répétée en fin de piste pour boucler sans saut. */}
+        <span className="site-tagline__roll" aria-hidden="true">
+          <span className="site-tagline__track">
+            {[...lines, lines[0]].map((line, index) => <span key={`${index}-${line}`}>{line}</span>)}
+          </span>
+        </span>
       </div>
       <nav className="site-header__nav" aria-label={messages.language}>
         <a href={config.githubUrl} rel="me" data-nav="">GitHub</a>
@@ -36,6 +51,14 @@ export default function SiteHeader({ config, route, onSwitchLocale }: SiteHeader
       </nav>
     </header>
   );
+}
+
+// ----------------------------------------------------------------------------
+// Extrait le pseudo affiché du lien GitHub de la configuration.
+// Paramètres : url est le profil GitHub ; retour : dernier segment, ou « GitHub ».
+// ----------------------------------------------------------------------------
+function githubHandle(url: string): string {
+  return url.split('/').filter(Boolean).pop() ?? 'GitHub';
 }
 
 // ----------------------------------------------------------------------------

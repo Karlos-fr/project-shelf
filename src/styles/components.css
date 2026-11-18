@@ -8,9 +8,26 @@
 
 /* ---------------------------------------------------------------- Coque */
 .site-shell { width: min(100% - 2rem, var(--content-width)); margin: 0 auto; min-height: 100vh; }
-.site-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 4.25rem; }
-.site-header__identity { display: flex; align-items: center; gap: .75rem; }
-.site-name { font-size: 1.05rem; font-weight: 700; font-stretch: 112%; letter-spacing: -.01em; text-decoration: none; }
+/* Bandeau sur une ligne, façon affichage de télévision : identité, phrase qui
+ * défile, puis GitHub et langues. */
+.site-header { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 1.1rem; min-height: 4.5rem; }
+.site-name { display: inline-flex; align-items: center; gap: .55rem; font-size: 1.1rem; font-weight: 760; font-stretch: 115%; letter-spacing: -.015em; text-decoration: none; white-space: nowrap; }
+/* Voyant « à l'antenne » qui respire doucement. */
+.site-name__dot { width: .55rem; height: .55rem; border-radius: 50%; background: #ff4b3e; box-shadow: 0 0 0 0 rgb(255 75 62 / 60%); animation: on-air 2.4s ease-in-out infinite; }
+@keyframes on-air { 50% { box-shadow: 0 0 0 .35rem rgb(255 75 62 / 0%); opacity: .75; } }
+.site-tagline { display: flex; align-items: center; gap: .6rem; min-width: 0; margin: 0; color: var(--muted); font-size: 1rem; font-weight: 450; line-height: 1.5; }
+.site-tagline::before { content: "—"; color: var(--subtle); }
+.site-tagline__roll { display: block; min-width: 0; height: 1.5em; overflow: hidden; }
+.site-tagline__track { display: flex; flex-direction: column; animation: tagline-roll 13s cubic-bezier(.7, 0, .2, 1) infinite; }
+.site-tagline__track > span { height: 1.5em; overflow: hidden; color: var(--text); text-overflow: ellipsis; white-space: nowrap; }
+/* Chaque fin de phrase reste à l'écran puis roule vers la suivante, comme un compteur. */
+@keyframes tagline-roll {
+  0%, 21% { transform: translateY(0); }
+  25%, 46% { transform: translateY(-1.5em); }
+  50%, 71% { transform: translateY(-3em); }
+  75%, 96% { transform: translateY(-4.5em); }
+  100% { transform: translateY(-6em); }
+}
 .site-header__nav { display: flex; align-items: center; gap: 1.1rem; font-size: .9rem; }
 .site-header__nav > a { color: var(--muted); text-decoration: none; }
 .site-header__nav > a:hover { color: var(--text); }
@@ -31,9 +48,7 @@
 main { padding: .25rem 0 3rem; }
 
 /* ---------------------------------------------------------------- Accroche */
-.hero { margin-bottom: 1.4rem; }
-.hero h1 { display: flex; flex-wrap: wrap; align-items: baseline; gap: .25rem .75rem; margin: 0; font-size: clamp(1.15rem, 2vw, 1.4rem); font-weight: 600; line-height: 1.25; letter-spacing: -.01em; }
-.hero__rest { color: var(--subtle); font-size: .95rem; font-weight: 400; letter-spacing: 0; }
+
 
 /* ---------------------------------------------------------------- Étiquettes */
 .project-tags { display: flex; flex-wrap: wrap; gap: .35rem; margin: 0; padding: 0; list-style: none; }
@@ -224,7 +239,7 @@ main { padding: .25rem 0 3rem; }
  * page ne sont nommés que sans popin ouverte, sinon ils passeraient devant elle. */
 .is-switching-locale::view-transition-old(root), .is-switching-locale::view-transition-new(root) { animation: none; }
 .is-switching-locale:not(:has(dialog[open])) .language-switch { view-transition-name: locale-switch; }
-.is-switching-locale:not(:has(dialog[open])) #hero-title { view-transition-name: locale-hero; }
+.is-switching-locale:not(:has(dialog[open])) .site-tagline { view-transition-name: locale-hero; }
 .is-switching-locale:not(:has(dialog[open])) .featured-stage__index { view-transition-name: locale-index; }
 .is-switching-locale:not(:has(dialog[open])) .featured-slide--active .featured-slide__caption { view-transition-name: locale-caption; }
 .is-switching-locale:not(:has(dialog[open])) .all-projects { view-transition-name: locale-projects; }
@@ -272,6 +287,10 @@ main { padding: .25rem 0 3rem; }
 /* Téléphone : la scène devient une piste qu'on fait glisser au doigt. */
 @media (max-width: 47.99rem) {
   .site-shell { width: min(100% - 2rem, var(--content-width)); }
+  /* Sur téléphone, la phrase passe sous l'identité et les liens. */
+  .site-header { grid-template-columns: 1fr auto; row-gap: .1rem; padding-block: .75rem; }
+  .site-tagline { grid-column: 1 / -1; grid-row: 2; font-size: .95rem; }
+  .site-tagline::before { display: none; }
   .filter-row--primary { grid-template-columns: 1fr; }
   .sort-control { justify-content: space-between; }
   .featured-stage { height: auto; overflow: visible; background: none; }

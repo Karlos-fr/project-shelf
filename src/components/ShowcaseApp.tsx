@@ -52,7 +52,6 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
   const featured = useMemo(() => selectFeaturedProjects(summaries), [summaries]);
   const messages = MESSAGES[route.locale];
   const projectForFallback = !controller.hydrated && initialProject?.id === route.projectId ? initialProject : undefined;
-  const [introLead, introRest] = splitIntro(config.intro[route.locale]);
   const { openProject, switchLocale, updateGallery } = controller;
 
   // Active la navigation aux flèches une seule fois, après hydratation.
@@ -119,9 +118,6 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
     <div className="site-shell" data-showcase-ready={controller.hydrated ? 'true' : 'false'}>
       <SiteHeader config={config} route={route} onSwitchLocale={switchLocaleAnimated} />
       <main>
-        <section className="hero" aria-labelledby="hero-title">
-          <h1 id="hero-title"><span>{introLead}</span>{introRest !== '' && <> <span className="hero__rest">{introRest}</span></>}</h1>
-        </section>
         {projectForFallback !== undefined && (
           <section className="direct-project" aria-label={projectForFallback.name}>
             <ProjectDetails project={projectForFallback} locale={route.locale} base={config.base} categories={categories} />
@@ -146,15 +142,6 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
     </div>
     </MediaCoordinatorContext.Provider>
   );
-}
-
-// ----------------------------------------------------------------------------
-// Sépare l'accroche en une phrase principale et un complément plus discret.
-// Paramètres : intro est le texte traduit du site ; retour : [principal, reste].
-// ----------------------------------------------------------------------------
-function splitIntro(intro: string): [string, string] {
-  const cut = intro.indexOf('. ');
-  return cut === -1 ? [intro, ''] : [intro.slice(0, cut + 1), intro.slice(cut + 2)];
 }
 
 // ----------------------------------------------------------------------------

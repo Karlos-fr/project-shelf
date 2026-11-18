@@ -20,7 +20,7 @@ test('rend l identité sans JavaScript', async function noJavaScript({ browser }
     // Réponse réelle du serveur ; son code est vérifié indépendamment du DOM.
     const response = await page.goto('http://127.0.0.1:4321/');
     expect(response?.status()).toBe(200);
-    await expect(page.getByRole('link', { name: 'ProjectShelf' })).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Karlos-fr' })).toBeVisible();
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Games, apps, and experiments.');
     await expect(page.locator('meta[name="robots"]')).toHaveAttribute('content', 'index,follow');
     await expect(page.locator('link[rel="canonical"]')).toHaveAttribute('href', 'https://example.test/en/');
