@@ -9,7 +9,7 @@
 // ============================================================================
 import * as THREE from 'three/webgpu';
 import {
-  builtinShadowContext, color, convertToTexture, diffuseColor, float, materialColor, materialRoughness, metalness, mix, mrt,
+  builtinShadowContext, color, convertToTexture, diffuseColor, float, metalness, mix, mrt, normalMap,
   normalView, normalWorld, output, packNormalToRGB, pass, roughness, sample, screenUV, smoothstep, texture, unpackRGBToNormal,
   uniform, uv, vec2, vec3, vec4, velocity,
 } from 'three/tsl';
@@ -79,6 +79,10 @@ const SCREEN_WIDTH = 0.4;
 // ----------------------------------------------------------------------------
 export async function createShelfScene(options: ShelfSceneOptions): Promise<ShelfScene> {
   const { canvas, items, assetBase, small, reducedMotion } = options;
+  // Préréglage léger pour téléphone et iPad : Safari iOS ferme l'onglet au-delà de
+  // quelques centaines de mégaoctets, mémoire vidéo comprise.
+  const appleTouch = /iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  const lite = small || appleTouch;
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, forceWebGL: options.forceWebGL === true });
   await renderer.init();
   const backend: 'webgpu' | 'webgl' = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true ? 'webgpu' : 'webgl';
@@ -110,7 +114,7 @@ export async function createShelfScene(options: ShelfSceneOptions): Promise<Shel
   sun.position.set(-2.9, 1.15, 1.7);
   sun.target.position.set(0.05, 0.18, 0);
   sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.mapSize.setScalar(lite ? 1024 : 2048);
   sun.shadow.bias = -0.0002;
   sun.shadow.normalBias = 0.008;
   sun.shadow.radius = 7;
@@ -142,29 +146,36 @@ export async function createShelfScene(options: ShelfSceneOptions): Promise<Shel
   // --------------------------------------------------------------- matières
   const dustTex = keep(blotchTexture(1024, 17, 140, 9000));
   const smudgeTex = keep(blotchTexture(512, 29, 60, 0));
-  const woodSrc = await Promise.all(['wood_diff', 'wood_nor', 'wood_arm'].map((name) => loader.loadAsync(`${assetBase}${name}.jpg`)));
-  woodSrc.forEach((t) => keep(t));
+  // Le téléphone reçoit des textures de bois deux fois plus petites : la mémoire d'un iPhone est comptée.
+  const woodSuffix = lite ? '_1k' : '';
+  const [woodDiff, woodNor, woodArm] = await Promise.all(['wood_diff', 'wood_nor', 'wood_arm']
+    .map((name) => loader.loadAsync(`${assetBase}${name}${woodSuffix}.jpg`))) as [THREE.Texture, THREE.Texture, THREE.Texture];
+  for (const t of [woodDiff, woodNor, woodArm]) {
+    keep(t);
+    t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.anisotropy = maxAniso;
+  }
+  woodDiff.colorSpace = THREE.SRGBColorSpace;
   // Placage de noyer verni (Poly Haven, CC0) ; chaque pièce décale son veinage.
+  // Les trois textures sont partagées : WebGPU alloue une copie en mémoire vidéo par
+  // objet Texture, donc cloner par planche coûtait 84 textures 2K (environ 1,8 Go).
+  // Répétition, décalage et rotation sont calculés dans le shader.
   function woodMaterial(ru: number, rv: number, rotate = false, coat = 0.3, ox = 0, oy = 0): THREE.MeshPhysicalNodeMaterial {
-    const [map, normalMap, arm] = woodSrc.map((source) => {
-      const t = keep(source.clone());
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
-      t.repeat.set(ru, rv);
-      t.offset.set(ox, oy);
-      if (rotate) { t.center.set(0.5, 0.5); t.rotation = Math.PI / 2; }
-      t.anisotropy = maxAniso;
-      t.needsUpdate = true;
-      return t;
-    }) as [THREE.Texture, THREE.Texture, THREE.Texture];
-    map.colorSpace = THREE.SRGBColorSpace;
+    const base = uv();
+    // Même transformation que Texture.repeat/offset/rotation (centre 0,5 quand la planche est tournée).
+    const woodUV = rotate
+      ? vec2(base.y.mul(ru).add(0.5 - ru * 0.5 + ox), base.x.mul(-rv).add(0.5 + rv * 0.5 + oy))
+      : base.mul(vec2(ru, rv)).add(vec2(ox, oy));
+    const arm = texture(woodArm, woodUV);
     const material = keep(new THREE.MeshPhysicalNodeMaterial({
-      map, normalMap, normalScale: new THREE.Vector2(2.2, 2.2), roughnessMap: arm, aoMap: arm, roughness: 1, metalness: 0,
-      clearcoat: coat, clearcoatRoughness: 0.32, specularIntensity: 0.5, color: 0xd2c8c0,
+      roughness: 1, metalness: 0, clearcoat: coat, clearcoatRoughness: 0.32, specularIntensity: 0.5,
     }));
     // Une fine poussière se dépose sur les faces tournées vers le haut et mate le vernis.
     const dust = normalWorld.y.smoothstep(0.7, 1).mul(texture(dustTex, uv().mul(vec2(5, 1.4))).r.smoothstep(0.15, 0.9)).mul(0.32);
-    material.colorNode = mix(materialColor, color(0x9a9186), dust);
-    material.roughnessNode = mix(materialRoughness, float(0.95), dust);
+    material.colorNode = mix(texture(woodDiff, woodUV).rgb.mul(color(0xd2c8c0)), color(0x9a9186), dust);
+    material.normalNode = normalMap(texture(woodNor, woodUV), vec2(2.2, 2.2));
+    material.roughnessNode = mix(arm.g, float(0.95), dust);
+    material.aoNode = arm.r;
     return material;
   }
 
@@ -268,7 +279,7 @@ export async function createShelfScene(options: ShelfSceneOptions): Promise<Shel
   scenePass.getTexture('metalrough').type = THREE.UnsignedByteType;
   const beauty = scenePass.getTextureNode('output');
   let lit: THREE.Node<'vec4'> = beauty;
-  if (!small) {
+  if (!lite) {
     // Lumière indirecte : le soleil rebondit sur le bois et éclaire les boîtes voisines.
     const gi = ssgi(beauty, preDepth, preNormal, camera);
     gi.resolutionScale = 0.5;
@@ -384,19 +395,22 @@ export async function createShelfScene(options: ShelfSceneOptions): Promise<Shel
   // --------------------------------------------------------------- fabrication des objets
   async function makeBox(box: ShelfBox, index: number): Promise<THREE.Mesh> {
     const [w, h, d] = box.size;
-    const frontImage = await loadImage(`${assetBase}${box.front}`);
-    const backImage = typeof box.back === 'string' ? await loadImage(`${assetBase}${box.back}`) : await composeBack(box.back, assetBase);
-    const spineImage = typeof box.spine === 'string' ? await loadImage(`${assetBase}${box.spine}`) : spineCanvas(box.spine);
+    // Sur téléphone, la face avant suffit en 1024 px (environ 300 px à l'écran une fois zoomée),
+    // et le dos, jamais tourné vers l'utilisateur, en 512 px.
+    const frontImage = shrink(await loadImage(`${assetBase}${box.front}`), lite ? 1024 : Infinity);
+    const backImage = shrink(typeof box.back === 'string' ? await loadImage(`${assetBase}${box.back}`) : await composeBack(box.back, assetBase), lite ? 512 : Infinity);
+    const spineImage = shrink(typeof box.spine === 'string' ? await loadImage(`${assetBase}${box.spine}`) : spineCanvas(box.spine), lite ? 768 : Infinity);
     const coat = box.kind === 'case' ? 0.45 : 0.2;
     // Albédo calibré : un papier blanc renvoie environ 80 % de la lumière.
     const paper = (source: CanvasImageSource & { width: number; height: number }, seed: number) => keep(new THREE.MeshPhysicalMaterial({
       map: keep(worn(source, seed)), color: 0xe6e6e6, normalMap: keep(printNormal(source)), normalScale: new THREE.Vector2(0.55, 0.55),
       roughness: 0.46, clearcoat: coat, clearcoatRoughness: 0.22,
-      clearcoatNormalMap: keep(printNormal(source, 1.2, 0.02, 700)), clearcoatNormalScale: new THREE.Vector2(0.3, 0.3),
+      ...(lite ? {} : { clearcoatNormalMap: keep(printNormal(source, 1.2, 0.02, 700)), clearcoatNormalScale: new THREE.Vector2(0.3, 0.3) }),
     }));
     const front = paper(frontImage, 7 + index);
     const back = paper(backImage, 13 + index);
     const spine = paper(spineImage, 21 + index);
+    release(frontImage, backImage, spineImage);
     const mesh = new THREE.Mesh(keep(new RoundedBoxGeometry(w, h, d, 3, box.kind === 'case' ? 0.003 : 0.0035)), [spine, spine, spine, spine, front, back]);
     mesh.castShadow = mesh.receiveShadow = true;
     mesh.position.y = h / 2;
@@ -589,11 +603,30 @@ function seeded(seed: number): () => number {
   return () => (state = (state * 16807) % 2147483647) / 2147483647;
 }
 
-function canvas2d(width: number, height: number): [HTMLCanvasElement, CanvasRenderingContext2D] {
+function canvas2d(width: number, height: number, willReadFrequently = false): [HTMLCanvasElement, CanvasRenderingContext2D] {
   const canvas = Object.assign(document.createElement('canvas'), { width, height });
-  const context = canvas.getContext('2d', { willReadFrequently: true });
+  const context = canvas.getContext('2d', { willReadFrequently });
   if (context === null) throw new Error('Canvas 2D indisponible.');
   return [canvas, context];
+}
+
+// ----------------------------------------------------------------------------
+// Réduit une image dont le plus grand côté dépasse maxSide ; sinon la rend telle quelle.
+// ----------------------------------------------------------------------------
+function shrink<S extends CanvasImageSource & { width: number; height: number }>(source: S, maxSide: number): S | HTMLCanvasElement {
+  const scale = maxSide / Math.max(source.width, source.height);
+  if (scale >= 1) return source;
+  const [canvas, context] = canvas2d(Math.round(source.width * scale), Math.round(source.height * scale));
+  context.imageSmoothingQuality = 'high';
+  context.drawImage(source, 0, 0, canvas.width, canvas.height);
+  if (source instanceof HTMLCanvasElement) release(source);
+  return canvas;
+}
+
+// Libère tout de suite la mémoire de toiles intermédiaires : Safari ne la rend qu'au
+// ramasse-miettes et plafonne la mémoire totale des canvas d'une page.
+function release(...sources: CanvasImageSource[]): void {
+  for (const source of sources) if (source instanceof HTMLCanvasElement) { source.width = 0; source.height = 0; }
 }
 
 // Grain fibreux du plâtre : bruit fin et quelques fibres orientées.
@@ -662,7 +695,7 @@ function worn(source: CanvasImageSource & { width: number; height: number }, see
 function printNormal(source: CanvasImageSource & { width: number; height: number }, strength = 2.2, tooth = 0.05, maxWidth = 1400): THREE.CanvasTexture {
   const w = Math.min(source.width, maxWidth);
   const h = Math.round(source.height * w / source.width);
-  const [canvas, context] = canvas2d(w, h);
+  const [canvas, context] = canvas2d(w, h, true);
   context.drawImage(source, 0, 0, w, h);
   const image = context.getImageData(0, 0, w, h);
   const data = image.data;
@@ -772,7 +805,9 @@ function plaqueTextures(name: string, meta: string, anisotropy: number): { map: 
   const map = new THREE.CanvasTexture(canvas);
   map.colorSpace = THREE.SRGBColorSpace;
   map.anisotropy = anisotropy;
-  return { map, normal: printNormal(mask, 6, 0.015, 1024) };
+  const normal = printNormal(mask, 6, 0.015, 1024);
+  release(text, ink, mask);
+  return { map, normal };
 }
 
 // Nez de tablette en demi-rond, comme un chant massif poncé (coupe : x vers l'avant).

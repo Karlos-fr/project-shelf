@@ -31,6 +31,23 @@ const SWIPE_THRESHOLD = 40;
 
 type SceneState = 'idle' | 'loading' | 'ready' | 'failed';
 
+// Marque de session posée pendant le chargement de la scène et retirée une fois qu'elle tourne.
+const CRASH_FLAG = 'project-shelf:shelf-loading';
+const CRASH_GRACE_MS = 6000;
+
+function readCrashFlag(): boolean {
+  try { return window.sessionStorage.getItem(CRASH_FLAG) === '1'; } catch { return false; }
+}
+
+function writeCrashFlag(on: boolean): void {
+  try {
+    if (on) window.sessionStorage.setItem(CRASH_FLAG, '1');
+    else window.sessionStorage.removeItem(CRASH_FLAG);
+  } catch {
+    // Stockage bloqué (navigation privée stricte) : pas de garde-fou, la scène se charge quand même.
+  }
+}
+
 // ----------------------------------------------------------------------------
 // Rend la section de l'étagère, ou rien si aucun projet public n'a d'objet.
 // ----------------------------------------------------------------------------
@@ -56,11 +73,16 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
     if (section === null || canvas === null || items.length === 0 || typeof IntersectionObserver === 'undefined') return;
     let disposed = false;
     let started = false;
+    let clearFlag = 0;
     const observer = new IntersectionObserver((entries) => {
       const isVisible = entries.some((entry) => entry.isIntersecting);
       setVisible(isVisible);
       if (!isVisible || started) return;
       started = true;
+      // Un chargement précédent n'a jamais abouti : le navigateur a sans doute fermé l'onglet
+      // faute de mémoire. On reste sur la version HTML pour ne pas recharger en boucle.
+      if (readCrashFlag()) { setSceneState('failed'); return; }
+      writeCrashFlag(true);
       setSceneState('loading');
       const small = window.matchMedia('(max-width: 719px)').matches;
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -81,14 +103,19 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
           if (disposed) { scene.dispose(); return; }
           sceneRef.current = scene;
           setSceneState('ready');
+          // Quelques secondes de rendu sans fermeture d'onglet suffisent à lever le doute.
+          clearFlag = window.setTimeout(() => writeCrashFlag(false), CRASH_GRACE_MS);
         })
-        .catch(() => { if (!disposed) setSceneState('failed'); });
+        .catch(() => { writeCrashFlag(false); if (!disposed) setSceneState('failed'); });
     }, { rootMargin: '300px 0px' });
     observer.observe(section);
     const onResize = () => sceneRef.current?.resize();
     window.addEventListener('resize', onResize);
     return () => {
       disposed = true;
+      window.clearTimeout(clearFlag);
+      // Un démontage normal prouve que l'onglet a survécu : la marque n'a plus lieu d'être.
+      if (started) writeCrashFlag(false);
       observer.disconnect();
       window.removeEventListener('resize', onResize);
       sceneRef.current?.dispose();
