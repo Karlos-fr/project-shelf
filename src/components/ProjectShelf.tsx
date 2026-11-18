@@ -60,6 +60,7 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
   const sceneRef = useRef<ShelfScene | null>(null);
   const downXRef = useRef<number | null>(null);
   const swipedRef = useRef(false);
+  const swipeRef = useRef<((dx: number) => void) | null>(null);
   const [sceneState, setSceneState] = useState<SceneState>('idle');
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
@@ -135,6 +136,50 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
     return () => document.removeEventListener('visibilitychange', sync);
   }, [visible, suspended, sceneState]);
 
+  // Glissé au doigt. Safari iOS annule les événements pointeur dès que le geste
+  // ressemble un peu à un défilement, ce qui arrive à presque tout glissé humain.
+  // Les événements touch, eux, vont jusqu'au bout : un geste surtout horizontal
+  // bloque le défilement de la page et passe à l'objet voisin.
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (canvas === null || sceneState !== 'ready') return;
+    let start: { x: number; y: number } | null = null;
+    let horizontal: boolean | null = null;
+    const onStart = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      start = event.touches.length === 1 && touch !== undefined ? { x: touch.clientX, y: touch.clientY } : null;
+      horizontal = null;
+    };
+    const onMove = (event: TouchEvent) => {
+      const touch = event.touches[0];
+      if (start === null || touch === undefined) return;
+      const dx = touch.clientX - start.x;
+      const dy = touch.clientY - start.y;
+      // La direction se décide sur les premiers pixels, puis ne change plus.
+      if (horizontal === null && Math.hypot(dx, dy) > 8) horizontal = Math.abs(dx) > Math.abs(dy);
+      if (horizontal === true && event.cancelable) event.preventDefault();
+    };
+    const onEnd = (event: TouchEvent) => {
+      const touch = event.changedTouches[0];
+      if (start !== null && touch !== undefined && horizontal === true) {
+        const dx = touch.clientX - start.x;
+        if (Math.abs(dx) > SWIPE_THRESHOLD) swipeRef.current?.(dx);
+      }
+      start = null;
+    };
+    const onCancel = () => { start = null; };
+    canvas.addEventListener('touchstart', onStart, { passive: true });
+    canvas.addEventListener('touchmove', onMove, { passive: false });
+    canvas.addEventListener('touchend', onEnd);
+    canvas.addEventListener('touchcancel', onCancel);
+    return () => {
+      canvas.removeEventListener('touchstart', onStart);
+      canvas.removeEventListener('touchmove', onMove);
+      canvas.removeEventListener('touchend', onEnd);
+      canvas.removeEventListener('touchcancel', onCancel);
+    };
+  }, [sceneState]);
+
   useEffect(() => { sceneRef.current?.setActive(active); }, [active, sceneState]);
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
@@ -177,22 +222,27 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
     sceneRef.current?.setPointer(0);
     if (zoomed < 0 && !window.matchMedia('(max-width: 719px)').matches) setActive(-1);
   }
-  // Le glissé passe par les événements pointeur ; le simple appui passe par click,
-  // seul événement que Safari iOS délivre de façon fiable pour un tap sur un canvas.
+  // Passe à l'objet voisin : vers la droite si le geste va vers la gauche.
+  function swipe(dx: number): void {
+    swipedRef.current = true;
+    const from = zoomed >= 0 ? zoomed : Math.max(active, 0);
+    const next = Math.max(0, Math.min(items.length - 1, from + (dx < 0 ? 1 : -1)));
+    if (zoomed >= 0) zoomTo(next); else setActive(next);
+  }
+  swipeRef.current = swipe;
+  // Le glissé à la souris passe par les événements pointeur ; au doigt, par les
+  // événements touch (voir plus haut). Le simple appui passe par click, seul
+  // événement que Safari iOS délivre de façon fiable pour un tap sur un canvas.
   function handlePointerDown(event: PointerEvent<HTMLCanvasElement>): void {
-    downXRef.current = event.clientX;
     swipedRef.current = false;
+    downXRef.current = event.pointerType === 'touch' ? null : event.clientX;
   }
   function handlePointerUp(event: PointerEvent<HTMLCanvasElement>): void {
     const downX = downXRef.current;
     downXRef.current = null;
     if (sceneRef.current === null || downX === null) return;
     const dx = event.clientX - downX;
-    if (Math.abs(dx) <= SWIPE_THRESHOLD) return;
-    swipedRef.current = true;
-    const from = zoomed >= 0 ? zoomed : Math.max(active, 0);
-    const next = Math.max(0, Math.min(items.length - 1, from + (dx < 0 ? 1 : -1)));
-    if (zoomed >= 0) zoomTo(next); else setActive(next);
+    if (Math.abs(dx) > SWIPE_THRESHOLD) swipe(dx);
   }
   function handleClick(event: MouseEvent<HTMLCanvasElement>): void {
     const scene = sceneRef.current;
