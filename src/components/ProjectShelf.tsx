@@ -59,6 +59,7 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sceneRef = useRef<ShelfScene | null>(null);
   const downXRef = useRef<number | null>(null);
+  const swipedRef = useRef(false);
   const [sceneState, setSceneState] = useState<SceneState>('idle');
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
@@ -176,18 +177,27 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
     sceneRef.current?.setPointer(0);
     if (zoomed < 0 && !window.matchMedia('(max-width: 719px)').matches) setActive(-1);
   }
+  // Le glissé passe par les événements pointeur ; le simple appui passe par click,
+  // seul événement que Safari iOS délivre de façon fiable pour un tap sur un canvas.
+  function handlePointerDown(event: PointerEvent<HTMLCanvasElement>): void {
+    downXRef.current = event.clientX;
+    swipedRef.current = false;
+  }
   function handlePointerUp(event: PointerEvent<HTMLCanvasElement>): void {
-    const scene = sceneRef.current;
     const downX = downXRef.current;
     downXRef.current = null;
-    if (scene === null || downX === null) return;
+    if (sceneRef.current === null || downX === null) return;
     const dx = event.clientX - downX;
-    if (Math.abs(dx) > SWIPE_THRESHOLD) {
-      const from = zoomed >= 0 ? zoomed : Math.max(active, 0);
-      const next = Math.max(0, Math.min(items.length - 1, from + (dx < 0 ? 1 : -1)));
-      if (zoomed >= 0) zoomTo(next); else setActive(next);
-      return;
-    }
+    if (Math.abs(dx) <= SWIPE_THRESHOLD) return;
+    swipedRef.current = true;
+    const from = zoomed >= 0 ? zoomed : Math.max(active, 0);
+    const next = Math.max(0, Math.min(items.length - 1, from + (dx < 0 ? 1 : -1)));
+    if (zoomed >= 0) zoomTo(next); else setActive(next);
+  }
+  function handleClick(event: MouseEvent<HTMLCanvasElement>): void {
+    const scene = sceneRef.current;
+    // Le click qui suit un glissé à la souris ne doit pas zoomer en plus.
+    if (scene === null || swipedRef.current) { swipedRef.current = false; return; }
     const index = scene.pick(event.clientX, event.clientY);
     zoomTo(index < 0 || index === zoomed ? -1 : index);
   }
@@ -218,7 +228,8 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
       <div className="shelf__stage" data-state={sceneState}>
         <canvas ref={canvasRef} className="shelf__canvas" aria-hidden="true"
           onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave}
-          onPointerDown={(event) => { downXRef.current = event.clientX; }} onPointerUp={handlePointerUp} />
+          onPointerDown={handlePointerDown} onPointerUp={handlePointerUp}
+          onPointerCancel={() => { downXRef.current = null; }} onClick={handleClick} />
         {sceneState === 'loading' && <span className="shelf__loading">{messages.shelfLoading}</span>}
       </div>
       <div className={`shelf__caption${current === undefined ? ' is-empty' : ''}`} aria-live="polite">
