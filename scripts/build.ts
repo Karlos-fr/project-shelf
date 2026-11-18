@@ -4,7 +4,7 @@
 // Ce script prépare un espace public depuis une source explicite avant de lancer
 // Astro. Il ne télécharge aucun média, ne publie rien et n'utilise pas GitHub Actions.
 // ============================================================================
-import { copyFile, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -24,6 +24,8 @@ const GENERATED_ROOT = join(ROOT, '.generated');
 const PUBLISHED_PATH = join(GENERATED_ROOT, 'catalogue.json');
 // Répertoire public distribué par Astro ; il ne contient que les médias sélectionnés.
 const PUBLIC_DIR = join(GENERATED_ROOT, 'public');
+// Jaquettes, placage et HDRI de l'étagère 3D, servis sous /shelf/ hors fixtures.
+const SHELF_SOURCE = join(ROOT, 'content/shelf');
 // Répertoire de sortie Astro audité après chaque build réussi.
 const DIST_DIR = join(ROOT, 'dist');
 
@@ -91,6 +93,8 @@ async function stageGenerated(published: PublishedCatalogue, fixture: boolean): 
     await mkdir(dirname(target), { recursive: true });
     await copyFile(source, target);
   }
+  // Les fixtures n'ont pas d'objet d'étagère : leurs builds restent légers.
+  if (!fixture) await cp(SHELF_SOURCE, join(stagePublic, 'shelf'), { recursive: true });
   await rm(PUBLIC_DIR, { recursive: true, force: true });
   await rm(PUBLISHED_PATH, { force: true });
   await rename(stagePublic, PUBLIC_DIR);

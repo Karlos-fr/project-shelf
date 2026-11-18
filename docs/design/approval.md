@@ -59,3 +59,15 @@ L'auteur a jugé la direction « Cinéma » trop générique (« soupe IA ») : 
 - polices auto-hébergées : Mona Sans (variable, largeur 75–125 %) et IBM Plex Mono.
 
 Les médias restent en 16:9 dans la grille et la grille desktop garde quatre colonnes. Les animations sont coupées avec `prefers-reduced-motion`. Les contrastes n'ont pas fait l'objet d'un audit complet.
+
+## Signature « L'étagère » — 18 novembre 2026
+
+Pour rendre le nom ProjectShelf concret, l'auteur a validé, après plusieurs prototypes privés, une **étagère en noyer rendue en 3D temps réel**, placée entre la une et la grille :
+
+- chaque projet est posé dans **l'objet de son époque**, avec ses **vraies jaquettes** (versions françaises quand elles existent) : grande boîte PC pour Fun Tracks Recomp et Quake2JS, boîtier de disquette Infogrames pour La Mine aux Diamants, écrans qui lisent l'aperçu vidéo pour Lactea et Proscenium ;
+- **Three.js r187** en WebGPU avec repli WebGL 2 au rendu identique ; pipeline façon moteur de jeu : illumination globale et réflexions en espace écran, ombres de contact, rayons de soleil, TRAA puis netteté adaptative ; pas de profondeur de champ, pour garder les jaquettes nettes ;
+- lumière blanche balancée (le HDRI de salon et le rebond sur le noyer tiraient vers l'orange) et albédo des jaquettes calibré à environ 80 % pour ne pas brûler les blancs ;
+- interactions : survol pour sortir l'objet, clic pour un **travelling caméra** qui rend lisible la plaque en laiton gravé, re-clic ou Échap pour reculer ; l'objet zoomé pivote avec la souris ; glissé au doigt sur téléphone ;
+- le HTML initial garde le titre, une légende et un **index de liens** vers les fiches : la section fonctionne sans JavaScript et au clavier ; la scène n'est chargée qu'à l'approche de la section, se met en pause hors champ ou onglet masqué, et ses écrans passent par l'arbitre commun des lecteurs.
+
+Les jaquettes restent la propriété de leurs éditeurs (Virgin Interactive, id Software / Activision, Infogrames) ; le placage de noyer et le HDRI viennent de Poly Haven (CC0). Les performances n'ont pas été mesurées sur un poste au repos.

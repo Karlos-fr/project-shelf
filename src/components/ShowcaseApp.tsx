@@ -24,6 +24,7 @@ import FeaturedCarousel from './FeaturedCarousel.tsx';
 import ProjectDetails from './ProjectDetails.tsx';
 import ProjectFilters from './ProjectFilters.tsx';
 import ProjectGrid from './ProjectGrid.tsx';
+import ProjectShelf from './ProjectShelf.tsx';
 import ProjectModal from './ProjectModal.tsx';
 
 export type ShowcaseAppProps = {
@@ -127,6 +128,8 @@ export default function ShowcaseApp({ config, categories, summaries, initialRout
           <FeaturedCarousel projects={featured} route={route} base={config.base}
             suspended={route.projectId !== null} onOpen={openWithTransition} />
         )}
+        <ProjectShelf projects={summaries} route={route} base={config.base}
+          suspended={route.projectId !== null} onOpen={openWithTransition} />
         <section className="all-projects" aria-labelledby="all-projects-title">
           <div className="section-heading"><h2 id="all-projects-title" tabIndex={-1}>{messages.allProjects}</h2></div>
           <ProjectFilters categories={sortedCategories} locale={route.locale} state={gallery}
