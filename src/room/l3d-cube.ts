@@ -4,8 +4,8 @@
 // D'après les plans du boîtier publiés par enjrolas/L3D-Hardware (8x8x8 cube/case) :
 // enveloppe en acrylique transparent de 2 mm (environ 178 x 227 mm, dessus de 171 mm),
 // barrettes de 4 mm à 8 logements qui tiennent les LED, pas d'environ 21 mm. Les 512
-// LED sont éteintes par défaut (plastique translucide) ; setLit les allume en arc-en-ciel
-// animé, en attendant que le studio L3D de l'auteur les pilote. Origine : dessous du
+// LED sont éteintes par défaut (plastique translucide) ; setFrame leur donne les couleurs
+// calculées par le Photon virtuel (virtual-cube.ts), que pilote le studio L3D. Origine : dessous du
 // socle, au centre ; avant +z ; le câble d'alimentation sort à l'arrière du socle.
 // ============================================================================
 import * as THREE from 'three/webgpu';
@@ -18,11 +18,10 @@ const BOX_H = 0.197;
 
 export type L3dCube = {
   group: THREE.Group;
-  // Allume (arc-en-ciel animé) ou éteint les LED.
-  setLit(lit: boolean): void;
-  // Met les couleurs à jour à 20 images par seconde quand le cube est allumé et que animate est vrai.
-  // Retour : vrai si les LED ont changé et qu'il faut redessiner.
-  update(time: number, animate: boolean): boolean;
+  // Couleurs des 512 LED en RGB (0 à 255), ordre (y, x, z) ; null les éteint.
+  setFrame(rgb: Uint8Array | null): void;
+  // Applique la dernière image reçue. Retour : vrai s'il faut redessiner.
+  update(): boolean;
 };
 
 // ----------------------------------------------------------------------------
@@ -75,17 +74,16 @@ export function buildL3dCube(keep: <V extends { dispose(): void }>(value: V) => 
     }
   }
   const colour = new THREE.Color();
-  // Motif « plasma » : la teinte ondule dans l'espace et dans le temps.
-  const paint = (time: number) => {
-    const t = time / 1000;
-    positions.forEach(([x, y, z], i) => {
-      const wave = Math.sin(x * 0.7 + t * 1.3) + Math.sin(y * 0.6 - t * 0.9) + Math.sin((x + z) * 0.5 + t * 0.7);
-      const hue = (wave / 6 + 0.5 + t * 0.05) % 1;
-      const glow = 0.55 + 0.45 * Math.sin(z * 0.8 + y * 0.4 + t * 2);
-      colour.setHSL(hue, 1, 0.35 + 0.25 * glow, THREE.SRGBColorSpace);
-      colour.multiplyScalar(2.2);
+  // Une LED WS2812 paraît vive même à faible rapport cyclique : courbe gamma, puis
+  // gain au-delà de 1 pour que le rendu HDR la fasse briller.
+  const level = new Float32Array(256).map((_, v) => (v / 255) ** 0.45 * 6);
+  const paint = (rgb: Uint8Array) => {
+    for (let i = 0; i < positions.length; i += 1) {
+      const r = rgb[i * 3]!; const g = rgb[i * 3 + 1]!; const b = rgb[i * 3 + 2]!;
+      if (r === 0 && g === 0 && b === 0) colour.setRGB(0.16, 0.17, 0.18, THREE.SRGBColorSpace);
+      else colour.setRGB(level[r]!, level[g]!, level[b]!, THREE.SRGBColorSpace);
       leds.setColorAt(i, colour);
-    });
+    }
     if (leds.instanceColor !== null) leds.instanceColor.needsUpdate = true;
   };
   // LED éteintes : époxy translucide gris, sans lumière propre.
@@ -96,15 +94,14 @@ export function buildL3dCube(keep: <V extends { dispose(): void }>(value: V) => 
   };
   off();
   group.add(leds);
-  let lit = false;
-  let last = 0;
+  let pending: Uint8Array | null | undefined;
   return {
     group,
-    setLit(next) { lit = next; if (lit) paint(performance.now()); else off(); },
-    update(time, animate) {
-      if (!lit || !animate || time - last < 50) return false;
-      last = time;
-      paint(time);
+    setFrame(rgb) { pending = rgb; },
+    update() {
+      if (pending === undefined) return false;
+      if (pending === null) off(); else paint(pending);
+      pending = undefined;
       return true;
     },
   };

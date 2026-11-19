@@ -30,6 +30,7 @@ import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } 
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
 import { buildL3dCube } from './l3d-cube.ts';
+import { startVirtualCube } from './virtual-cube.ts';
 import { buildOutlet } from './outlet.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
@@ -316,6 +317,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   cube.group.rotation.y = Math.PI / 2;
   cube.group.userData.zone = 'shelf';
   scene.add(cube.group);
+  // Le vrai firmware du cube, en WebAssembly : il s'éveille quand le studio L3D lui parle.
+  const virtualCube = startVirtualCube(`${roomBase}l3d/l3d-emulator.mjs`, (rgb) => cube.setFrame(rgb));
   // Prise murale à côté de l'étagère, et câble noir : il sort à l'arrière du socle, descend
   // entre l'étagère et le mur, longe la plinthe puis remonte jusqu'à la fiche.
   const outlet = buildOutlet(keep);
@@ -487,8 +490,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
 
     if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) busy = true;
     if (pc.update(performance.now())) busy = true;
-    // Une fois allumées, les LED du cube s'animent face à l'étagère, à 20 images par seconde.
-    const cubeChanged = cube.update(performance.now(), view === 'shelf');
+    // Images du Photon virtuel reçues depuis le dernier rendu.
+    const cubeChanged = cube.update();
     // La lampe d'accent s'allume sur l'étagère et suit la boîte sortie.
     const item = active >= 0 ? model.placed[active] : undefined;
     const aim = item !== undefined
@@ -617,6 +620,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     },
     dispose() {
       renderer.setAnimationLoop(null);
+      virtualCube.dispose();
       model.disposeVideos();
       for (const value of disposables) value.dispose();
       pipeline.dispose();
