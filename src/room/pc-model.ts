@@ -10,7 +10,7 @@ import * as THREE from 'three/webgpu';
 import { float, texture, uv } from 'three/tsl';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { canvas2d, loadImage, printNormal } from '../shelf/shelf-materials.ts';
-import { SHORTCUT_SVG, svgUrl, XP_HEIGHT, XP_TASKBAR, XP_WIDTH, type XP_FILES } from '../xp/xp-art.ts';
+import { SHORTCUT_SVG, svgUrl, XP_CORNER, XP_HEIGHT, XP_TASKBAR, XP_WIDTH, type XP_FILES } from '../xp/xp-art.ts';
 
 export type PcIcon = { label: string; image: string; crossOrigin?: 'anonymous' };
 
@@ -38,6 +38,8 @@ export type PcModel = {
 // Dalle 4:3 visible d'un 17 pouces, en mètres.
 export const SCREEN_W = 0.32;
 export const SCREEN_H = 0.24;
+// Rayon des coins de la dalle, accordé à celui du bureau XP superposé.
+export const SCREEN_RADIUS = XP_CORNER / XP_WIDTH * SCREEN_W;
 
 // ----------------------------------------------------------------------------
 // Construit l'ordinateur. Effets de bord : charge les affiches des projets pour l'écran.
@@ -59,37 +61,72 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   const black = keep(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.7 }));
   const grey = keep(new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5 }));
 
-  // --------------------------------------------------------------- moniteur CRT
+  // --------------------------------------------------------------- moniteur CRT 17 pouces
+  // Modèle d'époque : façade beige à ouverture arrondie, menton portant la marque et les
+  // réglages, coque arrière profonde qui loge le tube, ouïes d'aération et pied orientable.
   const monitor = new THREE.Group();
   monitor.position.set(0.05, 0, -0.1);
   monitor.userData.zone = 'screen';
   group.add(monitor);
-  add(monitor, new THREE.CylinderGeometry(0.1, 0.115, 0.018, 48), plastic, 0, 0.009, 0.02);
-  add(monitor, new THREE.CylinderGeometry(0.06, 0.075, 0.03, 40), plasticDark, 0, 0.03, 0.02);
-  const bodyY = 0.045 + 0.195;
   const front = 0.2;
-  // Coque arrière en tronc de pyramide, qui loge le tube.
-  const shell = new THREE.BoxGeometry(0.39, 0.37, 0.36, 4, 4, 4);
-  const position = shell.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < position.count; i += 1) {
-    const t = (0.18 - position.getZ(i)) / 0.36;
-    const scale = 1 - 0.32 * t;
-    position.setXYZ(i, position.getX(i) * scale, position.getY(i) * scale - 0.025 * t, position.getZ(i));
+  const bodyY = 0.045 + 0.2;
+  const screenY = bodyY + 0.02;
+  // Pied orientable : galette et rotule.
+  add(monitor, new THREE.CylinderGeometry(0.1, 0.118, 0.018, 64), plastic, 0, 0.009, 0.0);
+  add(monitor, new THREE.CylinderGeometry(0.055, 0.075, 0.03, 48), plasticDark, 0, 0.03, 0.0);
+  // Coque arrière : boîte arrondie qui s'affine et descend vers l'arrière.
+  const housingDepth = 0.4;
+  const taper = (zRel: number) => {
+    const t = Math.min(1, Math.max(0, (zRel - 0.07) / 0.33));
+    return { scale: 1 - 0.36 * t ** 1.2, drop: 0.03 * t };
+  };
+  const housing = new RoundedBoxGeometry(0.392, 0.382, housingDepth, 6, 0.035);
+  const hp = housing.attributes.position as THREE.BufferAttribute;
+  for (let i = 0; i < hp.count; i += 1) {
+    const { scale, drop } = taper(housingDepth / 2 - hp.getZ(i));
+    hp.setXYZ(i, hp.getX(i) * scale, hp.getY(i) * scale - drop, hp.getZ(i));
   }
-  shell.computeVertexNormals();
-  add(monitor, shell, plastic, 0, bodyY, front - 0.06 - 0.18);
-  // Façade arrondie autour de la dalle, puis cadre sombre en retrait.
-  add(monitor, new RoundedBoxGeometry(0.415, 0.39, 0.07, 5, 0.022), plastic, 0, bodyY, front - 0.035);
-  const rim = new THREE.Shape([new THREE.Vector2(-0.178, -0.138), new THREE.Vector2(0.178, -0.138), new THREE.Vector2(0.178, 0.138), new THREE.Vector2(-0.178, 0.138)]);
-  rim.holes.push(new THREE.Path([new THREE.Vector2(-SCREEN_W / 2, -SCREEN_H / 2), new THREE.Vector2(SCREEN_W / 2, -SCREEN_H / 2), new THREE.Vector2(SCREEN_W / 2, SCREEN_H / 2), new THREE.Vector2(-SCREEN_W / 2, SCREEN_H / 2)]));
-  add(monitor, new THREE.ExtrudeGeometry(rim, { depth: 0.006, bevelEnabled: true, bevelThickness: 0.002, bevelSize: 0.003, bevelSegments: 2 }), keep(new THREE.MeshStandardMaterial({ color: 0x4a463d, roughness: 0.6 })), 0, bodyY + 0.012, front - 0.004);
-  // Dalle bombée : le verre avance d'un centimètre au centre.
-  const glassGeometry = new THREE.PlaneGeometry(SCREEN_W, SCREEN_H, 32, 24);
+  housing.computeVertexNormals();
+  const housingZ = front - 0.046 - housingDepth / 2;
+  add(monitor, housing, plastic, 0, bodyY, housingZ);
+  // Ouïes d'aération sur le dessus, vers l'arrière.
+  for (const zRel of [0.15, 0.19, 0.23]) {
+    const { scale, drop } = taper(zRel);
+    const top = bodyY + 0.191 * scale - drop;
+    for (let k = -9; k <= 9; k += 1) {
+      const slot = add(monitor, new THREE.BoxGeometry(0.005, 0.003, 0.03), black, k * 0.012 * scale, top, housingZ + housingDepth / 2 - zRel);
+      slot.castShadow = false;
+    }
+  }
+  // Façade : cadre arrondi dont l'ouverture épouse la dalle à un millimètre près.
+  const b = 0.006;
+  const bezelShape = roundedRect(0.405 - 2 * b, 0.395 - 2 * b, 0.028 - b, 0, 0);
+  bezelShape.holes.push(roundedRect(SCREEN_W + 0.002, SCREEN_H + 0.002, SCREEN_RADIUS + 0.001, 0, screenY - bodyY));
+  const bezel = new THREE.ExtrudeGeometry(bezelShape, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.008, bevelSize: b, bevelSegments: 4, curveSegments: 16 });
+  add(monitor, bezel, plastic, 0, bodyY, front - 0.038);
+  // Fond noir derrière la dalle : le liseré entre verre et façade reste sombre.
+  const mask = add(monitor, new THREE.ShapeGeometry(roundedRect(SCREEN_W + 0.01, SCREEN_H + 0.01, SCREEN_RADIUS + 0.005, 0, 0), 12), black, 0, screenY, front - 0.03);
+  mask.castShadow = false;
+  // Dalle bombée aux coins arrondis : le verre avance de 8 mm au centre.
+  const glassGeometry = new THREE.PlaneGeometry(SCREEN_W, SCREEN_H, 48, 36);
   const glassPosition = glassGeometry.attributes.position as THREE.BufferAttribute;
+  const cornerX = SCREEN_W / 2 - SCREEN_RADIUS;
+  const cornerY = SCREEN_H / 2 - SCREEN_RADIUS;
   for (let i = 0; i < glassPosition.count; i += 1) {
-    const nx = glassPosition.getX(i) / (SCREEN_W / 2);
-    const ny = glassPosition.getY(i) / (SCREEN_H / 2);
-    glassPosition.setZ(i, 0.009 * (1 - nx * nx * 0.6) * (1 - ny * ny * 0.6));
+    let x = glassPosition.getX(i);
+    let y = glassPosition.getY(i);
+    const dx = Math.abs(x) - cornerX;
+    const dy = Math.abs(y) - cornerY;
+    if (dx > 0 && dy > 0) {
+      const d = Math.hypot(dx, dy);
+      if (d > SCREEN_RADIUS) {
+        x = Math.sign(x) * (cornerX + dx * SCREEN_RADIUS / d);
+        y = Math.sign(y) * (cornerY + dy * SCREEN_RADIUS / d);
+      }
+    }
+    const nx = x / (SCREEN_W / 2);
+    const ny = y / (SCREEN_H / 2);
+    glassPosition.setXYZ(i, x, y, 0.008 * (1 - nx * nx * 0.6) * (1 - ny * ny * 0.6));
   }
   glassGeometry.computeVertexNormals();
   const screenCanvas = await paintDesktop(env);
@@ -101,15 +138,25 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
     emissive: 0xffffff, emissiveMap: screenTexture, emissiveIntensity: 0.95,
   }));
   glass.roughnessNode = float(0.05).add(texture(smudgeTex, uv().mul(1.1)).r.mul(0.25));
-  const screen = add(monitor, glassGeometry, glass, 0, bodyY + 0.012, front + 0.004);
+  const screen = add(monitor, glassGeometry, glass, 0, screenY, front - 0.012);
   screen.castShadow = false;
-  // Boutons et voyant sous la dalle.
-  add(monitor, new THREE.CylinderGeometry(0.008, 0.008, 0.006, 24), plasticDark, 0.15, bodyY - 0.165, front + 0.001).rotation.x = Math.PI / 2;
-  add(monitor, new THREE.SphereGeometry(0.0028, 12, 8), keep(new THREE.MeshStandardMaterial({ color: 0x1f8f2a, emissive: 0x32ff4a, emissiveIntensity: 2 })), 0.13, bodyY - 0.165, front + 0.002);
-  for (let k = 0; k < 4; k += 1) add(monitor, new RoundedBoxGeometry(0.014, 0.006, 0.006, 2, 0.002), plasticDark, -0.12 + k * 0.022, bodyY - 0.165, front + 0.001);
+  // Menton : marque au centre, nom du modèle à gauche, réglages et interrupteur à droite.
+  const chinY = (bodyY - 0.395 / 2 + screenY - SCREEN_H / 2 - 0.006) / 2;
+  const badge = keep(new THREE.CanvasTexture(brandCanvas()));
+  badge.colorSpace = THREE.SRGBColorSpace;
+  badge.anisotropy = maxAniso;
+  const decal = add(monitor, new THREE.PlaneGeometry(0.36, 0.05), keep(new THREE.MeshStandardMaterial({
+    map: badge, transparent: true, roughness: 0.45, polygonOffset: true, polygonOffsetFactor: -2,
+  })), -0.03, chinY + 0.004, front + 0.0004);
+  decal.castShadow = false;
+  const powerKnob = add(monitor, new THREE.CylinderGeometry(0.0095, 0.0095, 0.007, 32), plasticDark, 0.165, chinY, front + 0.002);
+  powerKnob.rotation.x = Math.PI / 2;
+  add(monitor, new THREE.SphereGeometry(0.0026, 12, 8), keep(new THREE.MeshStandardMaterial({ color: 0x1f8f2a, emissive: 0x32ff4a, emissiveIntensity: 2 })), 0.142, chinY, front + 0.0015);
+  add(monitor, new RoundedBoxGeometry(0.072, 0.014, 0.004, 2, 0.002), black, 0.098, chinY - 0.002, front - 0.0005);
+  for (let k = 0; k < 4; k += 1) add(monitor, new RoundedBoxGeometry(0.012, 0.007, 0.005, 2, 0.002), plasticDark, 0.073 + k * 0.017, chinY - 0.002, front + 0.001);
   // La lumière de l'écran éclaire le clavier et le bureau.
   const spill = new THREE.PointLight(0x9cc4ff, 0.35, 1.2, 2);
-  spill.position.set(0, bodyY, front + 0.15);
+  spill.position.set(0, screenY, front + 0.15);
   monitor.add(spill);
 
   // --------------------------------------------------------------- tour
@@ -182,11 +229,11 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
     screenCorners() {
       screen.updateWorldMatrix(true, false);
       return [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([sx, sy]) =>
-        screen.localToWorld(new THREE.Vector3((sx ?? 0) * SCREEN_W / 2, (sy ?? 0) * SCREEN_H / 2, 0.004)));
+        screen.localToWorld(new THREE.Vector3((sx ?? 0) * SCREEN_W / 2, (sy ?? 0) * SCREEN_H / 2, 0)));
     },
     screenCenter() {
       screen.updateWorldMatrix(true, false);
-      return screen.localToWorld(new THREE.Vector3(0, 0, 0.009));
+      return screen.localToWorld(new THREE.Vector3(0, 0, 0.008));
     },
     screenNormal() {
       return new THREE.Vector3(0, 0, 1).applyQuaternion(screen.getWorldQuaternion(new THREE.Quaternion()));
@@ -320,5 +367,41 @@ function keyboardCanvas(): HTMLCanvasElement {
     context.fillStyle = k === 0 ? '#3ad04a' : '#4a5a44';
     context.fillRect(width - 150 + k * 40, 26, 14, 6);
   }
+  return canvas;
+}
+
+// Rectangle arrondi centré en (cx, cy), utilisable comme forme ou comme trou.
+function roundedRect(width: number, height: number, radius: number, cx: number, cy: number): THREE.Shape {
+  const x0 = cx - width / 2; const x1 = cx + width / 2; const y0 = cy - height / 2; const y1 = cy + height / 2;
+  const shape = new THREE.Shape();
+  shape.moveTo(x0 + radius, y0);
+  shape.lineTo(x1 - radius, y0);
+  shape.absarc(x1 - radius, y0 + radius, radius, -Math.PI / 2, 0, false);
+  shape.lineTo(x1, y1 - radius);
+  shape.absarc(x1 - radius, y1 - radius, radius, 0, Math.PI / 2, false);
+  shape.lineTo(x0 + radius, y1);
+  shape.absarc(x0 + radius, y1 - radius, radius, Math.PI / 2, Math.PI, false);
+  shape.lineTo(x0, y0 + radius);
+  shape.absarc(x0 + radius, y0 + radius, radius, Math.PI, Math.PI * 1.5, false);
+  return shape;
+}
+
+// ----------------------------------------------------------------------------
+// Sérigraphie du menton : « SAMSUNG » au centre, « SyncMaster 750s » à gauche.
+// Retour : toile transparente au rapport 36 x 5 cm.
+// ----------------------------------------------------------------------------
+function brandCanvas(): HTMLCanvasElement {
+  const [canvas, context] = canvas2d(1440, 200);
+  context.textBaseline = 'middle';
+  context.textAlign = 'center';
+  context.fillStyle = '#2e3d6b';
+  context.font = 'bold 74px "Arial Black", Arial, sans-serif';
+  context.letterSpacing = '10px';
+  context.fillText('SAMSUNG', 720, 100);
+  context.letterSpacing = '0px';
+  context.textAlign = 'left';
+  context.fillStyle = '#5f5a4e';
+  context.font = 'italic bold 38px Arial, sans-serif';
+  context.fillText('SyncMaster 750s', 60, 104);
   return canvas;
 }

@@ -359,10 +359,12 @@ main { padding: .25rem 0 3rem; }
 }
 
 /* ---------------------------------------------------------------- La chambre 3D */
-.room__title { margin: 0; font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 780; font-stretch: 120%; letter-spacing: -.03em; line-height: 1.05; }
-.room__lead { margin: .4rem 0 1rem; color: var(--muted); }
-.room__stage { position: relative; height: clamp(32rem, calc(100vh - 8rem), 64rem); margin-inline: calc(50% - 50vw); background: #0a0b0d; overflow: hidden; }
-.room__stage[data-state="failed"] { display: none; }
+/* La page n'est que la scène : elle occupe toute la fenêtre. */
+.room-page { min-height: 100vh; background: #0a0b0d; }
+.room__stage { position: fixed; inset: 0; background: #0a0b0d; overflow: hidden; }
+.room-page[data-state="failed"] .room__stage { display: none; }
+.room__fallback { max-width: 48rem; margin: 0 auto; padding: 3rem 1.25rem; color: var(--muted); }
+.room__fallback a { color: var(--text); }
 .room__canvas { display: block; width: 100%; height: 100%; outline: none; }
 .room__loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; color: #c9c3b8; font: 500 .8rem var(--font-mono); }
 .room__progress { width: min(22rem, 70%); height: .4rem; overflow: hidden; border: 1px solid rgb(255 255 255 / .25); border-radius: 99px; background: rgb(255 255 255 / .06); }
@@ -382,13 +384,10 @@ main { padding: .25rem 0 3rem; }
 .room__caption a { justify-self: start; margin-top: .3rem; color: inherit; font-weight: 600; text-underline-offset: .2em; }
 .room__caption.is-empty strong { font-size: .95rem; font-weight: 500; font-stretch: 100%; letter-spacing: 0; color: rgb(244 239 230 / .7); }
 .room__hint { flex-basis: 100%; margin: 0; color: rgb(244 239 230 / .65); font: 500 .75rem var(--font-mono); }
-.room__failed { margin: 1rem 0; color: var(--muted); }
-.room__index-section { margin-top: 2rem; }
-.room__index-section h2 { margin: 0; font-size: 1rem; font-weight: 650; }
 
 /* ---------------------------------------------------------------- Écran du PC : bureau façon Windows XP */
-.room__screen { position: absolute; transform-origin: 0 0; border-radius: 14px / 12px; overflow: hidden; animation: room-screen-in .35s ease-out; }
-.room__screen::after { content: ""; position: absolute; inset: 0; z-index: 50; pointer-events: none;
+.room__screen { position: absolute; transform-origin: 0 0; overflow: hidden; animation: room-screen-in .35s ease-out; }
+.room__screen::after { content: ""; position: absolute; inset: 0; z-index: 50; border-radius: inherit; pointer-events: none;
   background: repeating-linear-gradient(to bottom, rgb(0 0 0 / .07) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 62%, rgb(0 0 0 / .32) 100%);
   box-shadow: inset 0 0 40px rgb(0 0 0 / .45); }
 @keyframes room-screen-in { from { opacity: 0; filter: brightness(1.6) blur(2px); } to { opacity: 1; filter: none; } }

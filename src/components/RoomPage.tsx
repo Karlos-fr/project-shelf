@@ -17,7 +17,7 @@ import { CRASH_GRACE_MS, readCrashFlag, writeCrashFlag } from '../shelf/crash-gu
 import { selectShelfItems } from '../shelf/shelf-items.ts';
 import type { RoomScene, RoomView, RoomZone } from '../room/room-scene.ts';
 import XpDesktop from '../xp/XpDesktop.tsx';
-import { XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
+import { XP_CORNER, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
 
 export type RoomPageProps = {
   config: SiteConfig;
@@ -40,7 +40,6 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
   const route: RouteState = { locale, projectId: null, categories: [], sort: 'updated', q: '' };
   const base = config.base;
   const root = base.endsWith('/') ? base : `${base}/`;
-  const other: Locale = locale === 'fr' ? 'en' : 'fr';
   // Seuls les projets qui ont eu un support physique vont sur l'étagère.
   const items = selectShelfItems(summaries).filter((item) => item.object.kind !== 'tv');
   const ids = items.map((item) => item.project.id).join(',');
@@ -195,66 +194,59 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
   const hint = view === 'shelf' ? messages.roomHintShelf : messages.roomHint;
   const xp = XP_LABELS[locale];
   return (
-    <div className="site-shell room-page">
-      <header className="shelf-page__header">
-        <a href={`${root}${locale}/`}>{messages.shelfBack}</a>
-        <a href={`${root}${other}/chambre/`} hrefLang={other} lang={other}>{messages.shelfOtherLocale}</a>
-      </header>
-      <main>
-        <h1 className="room__title">{messages.roomPageTitle}</h1>
-        <p className="room__lead">{messages.roomLead}</p>
-        <div className="room__stage" data-state={sceneState}>
-          <canvas ref={canvasRef} className="room__canvas" aria-hidden="true"
-            onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave} onClick={handleClick} />
-          {sceneState === 'loading' && (
-            <div className="room__loading">
-              <span>{messages.roomLoading}</span>
-              <div className="room__progress" role="progressbar" aria-label={messages.roomLoading}
-                aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
-                <span style={{ width: `${progress}%` }} />
+    <main className="room-page" data-state={sceneState}>
+      {/* Titre et liens restent dans le HTML : lecteurs d'écran, référencement, et repli si la 3D échoue. */}
+      <h1 className="sr-only">{messages.roomPageTitle}</h1>
+      <div className="room__stage" data-state={sceneState}>
+        <canvas ref={canvasRef} className="room__canvas" aria-hidden="true"
+          onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave} onClick={handleClick} />
+        {sceneState === 'loading' && (
+          <div className="room__loading">
+            <span>{messages.roomLoading}</span>
+            <div className="room__progress" role="progressbar" aria-label={messages.roomLoading}
+              aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+              <span style={{ width: `${progress}%` }} />
+            </div>
+            <span className="room__percent">{progress} %</span>
+          </div>
+        )}
+        {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{labels[zoneView(hover.zone)]}</span>}
+        {view === 'screen' && screenRect !== null && (
+          <div className="room__screen" style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}>
+            <XpDesktop locale={locale} projects={summaries} base={base} onTurnOff={() => goTo('desk')} />
+          </div>
+        )}
+        {view === 'screen' && sceneState === 'ready' && <button type="button" className="room__exit" onClick={() => goTo('desk')}>{xp.exit}</button>}
+        {sceneState === 'ready' && view !== 'screen' && (
+          <div className="room__hud">
+            <nav className="room__views" aria-label={messages.roomViews}>
+              {VIEW_ORDER.map((name) => (
+                <button key={name} type="button" aria-pressed={view === name} onClick={() => goTo(name)}>{labels[name]}</button>
+              ))}
+            </nav>
+            {view === 'shelf' && (
+              <div className={`room__caption${current === undefined ? ' is-empty' : ''}`} aria-live="polite">
+                <strong>{current === undefined ? messages.roomIdle : current.project.name}</strong>
+                {current !== undefined && <span>{current.project.tagline[locale]}</span>}
+                {current !== undefined && (
+                  <a href={formatRoute({ ...route, projectId: current.project.id }, base)}>{messages.shelfOpen}</a>
+                )}
               </div>
-              <span className="room__percent">{progress} %</span>
-            </div>
-          )}
-          {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{labels[zoneView(hover.zone)]}</span>}
-          {view === 'screen' && screenRect !== null && (
-            <div className="room__screen" style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})` }}>
-              <XpDesktop locale={locale} projects={summaries} base={base} onTurnOff={() => goTo('desk')} />
-            </div>
-          )}
-          {view === 'screen' && sceneState === 'ready' && <button type="button" className="room__exit" onClick={() => goTo('desk')}>{xp.exit}</button>}
-          {sceneState === 'ready' && view !== 'screen' && (
-            <div className="room__hud">
-              <nav className="room__views" aria-label={messages.roomViews}>
-                {VIEW_ORDER.map((name) => (
-                  <button key={name} type="button" aria-pressed={view === name} onClick={() => goTo(name)}>{labels[name]}</button>
-                ))}
-              </nav>
-              {view === 'shelf' && (
-                <div className={`room__caption${current === undefined ? ' is-empty' : ''}`} aria-live="polite">
-                  <strong>{current === undefined ? messages.roomIdle : current.project.name}</strong>
-                  {current !== undefined && <span>{current.project.tagline[locale]}</span>}
-                  {current !== undefined && (
-                    <a href={formatRoute({ ...route, projectId: current.project.id }, base)}>{messages.shelfOpen}</a>
-                  )}
-                </div>
-              )}
-              <p className="room__hint">{hint}</p>
-            </div>
-          )}
-        </div>
-        {sceneState === 'failed' && <p className="room__failed">{messages.roomFailed}</p>}
-        <section className="room__index-section" aria-labelledby="room-index">
-          <h2 id="room-index">{messages.roomIndex}</h2>
-          <ul className="shelf__index">
-            {summaries.map((project) => (
-              <li key={project.id}><a href={formatRoute({ ...route, projectId: project.id }, base)}>{project.name}</a></li>
-            ))}
-          </ul>
-        </section>
-        <p className="shelf__credits">{messages.roomCredits}</p>
-      </main>
-      <footer className="site-footer"><span>ProjectShelf</span><a href={config.githubUrl}>GitHub</a></footer>
-    </div>
+            )}
+            <p className="room__hint">{hint}</p>
+          </div>
+        )}
+      </div>
+      <section className={sceneState === 'failed' ? 'room__fallback' : 'sr-only'} aria-labelledby="room-index">
+        {sceneState === 'failed' && <p>{messages.roomFailed}</p>}
+        <h2 id="room-index">{messages.roomIndex}</h2>
+        <ul className="shelf__index">
+          {summaries.map((project) => (
+            <li key={project.id}><a href={formatRoute({ ...route, projectId: project.id }, base)}>{project.name}</a></li>
+          ))}
+        </ul>
+        <p><a href={`${root}${locale}/`}>{messages.shelfBack}</a></p>
+      </section>
+    </main>
   );
 }

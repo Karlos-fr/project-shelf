@@ -10,6 +10,8 @@ import type { Locale } from '../domain/locale.ts';
 export const XP_WIDTH = 1024;
 export const XP_HEIGHT = 768;
 export const XP_TASKBAR = 30;
+// Rayon des coins de la dalle du CRT, en pixels du bureau : l'interface HTML s'arrondit pareil.
+export const XP_CORNER = 34;
 
 export const XP_LABELS = {
   fr: {
