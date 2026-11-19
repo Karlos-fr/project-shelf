@@ -4,8 +4,8 @@
 // Photo de l'affiche officielle de la série (réédition Pyramid Posters, 61 x 91,5 cm,
 // d'après le cliché d'ovni de Billy Meier de 1975) : provenance dans docs/xp-assets.md.
 // Le groupe a pour origine le centre de l'affiche ; elle regarde vers +z. Quatre
-// boulettes de pâte à fixe la tiennent aux coins : le papier y est plaqué au mur et
-// bombe légèrement entre elles ; un peu de pâte dépasse sous chaque coin.
+// boulettes de pâte à fixe, cachées derrière les coins, la tiennent au mur : le papier
+// y repose et bombe légèrement entre elles.
 // ============================================================================
 import * as THREE from 'three/webgpu';
 
@@ -42,13 +42,14 @@ export async function buildPoster(keep: <V extends { dispose(): void }>(value: V
   paper.castShadow = true;
   paper.receiveShadow = true;
   group.add(paper);
-  // Pâte à fixe blanche, écrasée sous chaque coin : une lèvre dépasse du papier.
+  // Pâte à fixe blanche, écrasée entre le mur et le dos de chaque coin : invisible de face,
+  // elle décolle juste assez le papier pour qu'il projette une fine ombre sur le mur.
   const putty = keep(new THREE.MeshStandardMaterial({ color: 0xeeebe2, roughness: 0.85 }));
   const blob = keep(new THREE.SphereGeometry(0.013, 20, 12));
   for (const [sx, sy] of [[-1, 1], [1, 1], [-1, -1], [1, -1]] as const) {
     const piece = new THREE.Mesh(blob, putty);
-    piece.scale.set(1.15, 1, 0.32);
-    piece.position.set(sx * (POSTER_W / 2 - 0.009), sy * (POSTER_H / 2 - 0.009), PUTTY * 0.45);
+    piece.scale.set(1.15, 1, 0.12);
+    piece.position.set(sx * (POSTER_W / 2 - 0.03), sy * (POSTER_H / 2 - 0.03), PUTTY * 0.45);
     piece.castShadow = true;
     group.add(piece);
   }
