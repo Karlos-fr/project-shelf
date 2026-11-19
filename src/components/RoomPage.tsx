@@ -40,7 +40,8 @@ type ScreenRect = { left: number; top: number; width: number; height: number };
 type PcState = 'on' | 'shutdown' | 'collapse' | 'off' | 'warmup' | 'bios' | 'boot' | 'welcome';
 const PC_NEXT: Partial<Record<PcState, [number, PcState]>> = {
   shutdown: [2600, 'collapse'], collapse: [750, 'off'],
-  warmup: [1000, 'bios'], bios: [5600, 'boot'], boot: [4200, 'welcome'], welcome: [2000, 'on'],
+  // Le BIOS n'avance pas seul : il s'arrête sur « Press F1 to continue ».
+  warmup: [1000, 'bios'], boot: [4200, 'welcome'], welcome: [2000, 'on'],
 };
 const BOOTING: readonly PcState[] = ['warmup', 'bios', 'boot', 'welcome'];
 // Voyants et dalle 3D : éteint dès que l'image s'écrase, occupé pendant les séquences.
@@ -209,7 +210,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     else if (view === 'screen' || hit.zone === null) back();
   }
   function handleKeyDown(event: globalThis.KeyboardEvent): void {
-    // Une touche pendant l'allumage passe directement au bureau.
+    // F1 fait repartir le BIOS ; ailleurs dans l'allumage, une touche passe au bureau.
+    if (pc === 'bios') { if (event.key === 'F1') { setPc('boot'); event.preventDefault(); } else if (event.key !== 'Escape') event.preventDefault(); if (event.key !== 'Escape') return; }
     if (BOOTING.includes(pc) && event.key !== 'Escape') { setPc('on'); event.preventDefault(); return; }
     if (event.key === 'Escape' && (zoomed >= 0 || view !== 'overview')) { back(); event.preventDefault(); return; }
     if (view !== 'shelf' || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
@@ -241,7 +243,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
         )}
         {view === 'screen' && screenRect !== null && pc !== 'off' && (
           <div className={`room__screen is-${pc}`} style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}
-            onClick={() => { if (BOOTING.includes(pc)) setPc('on'); }}>
+            onClick={() => { if (pc === 'bios') setPc('boot'); else if (BOOTING.includes(pc)) setPc('on'); }}>
             {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} onTurnOff={() => setPc('shutdown')} />}
             {(pc === 'shutdown' || pc === 'collapse') && <div className="room__tube"><XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="shutdown" /></div>}
             {pc === 'warmup' && <div className="xp-power" />}

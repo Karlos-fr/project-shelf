@@ -28,7 +28,8 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
-import { buildShelfModel, SHELF_DEPTH, type ShelfSceneItem } from '../shelf/shelf-model.ts';
+import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
+import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
 export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster';
@@ -82,8 +83,8 @@ const BEECH = { tint: 0xf7dcc0, brightness: 1.25, normalScale: 0.9 } as const;
 const DESK = { x: -0.15, z: BACK + 0.38, w: 1.4, d: 0.7, h: 0.74 };
 // Affiche collée à la pâte à fixe au mur du fond, au-dessus du bureau.
 const POSTER = { x: -0.32, y: 1.64 };
-// Étagère accrochée au mur de gauche : centre de la tablette du milieu.
-const SHELF = { x: -RX + SHELF_DEPTH / 2 + 0.015, y: 1.32, z: -0.3, width: 1.2 };
+// Étagère en pin posée au sol contre le mur de gauche : les boîtes sont au 4e niveau, à hauteur des yeux.
+const SHELF = { x: -RX + RACK_DEPTH / 2 + 0.01, y: RACK_LEVELS[3], z: -0.3, width: RACK_WIDTH - 0.04 };
 
 type Pose = { position: THREE.Vector3; target: THREE.Vector3; fov: number };
 const pose = (p: [number, number, number], t: [number, number, number], fov: number): Pose =>
@@ -164,8 +165,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   skyLight.position.set(WIN.x, (WIN.y0 + WIN.y1) / 2, BACK - 0.02);
   skyLight.lookAt(WIN.x, (WIN.y0 + WIN.y1) / 2, 0);
   scene.add(skyLight);
-  // Rebond chaud du parquet et des murs, que la GI d'écran complète.
-  scene.add(new THREE.HemisphereLight(0xeef1f5, 0x6a5e52, 0.75));
+  // Ambiance : ciel neutre en haut, rebond clair du parquet en bas ; ce rebond éclaire
+  // aussi le plafond, qui sinon paraissait presque noir. La GI d'écran complète.
+  scene.add(new THREE.HemisphereLight(0xeef1f5, 0xb3a897, 0.8));
   // Lampe d'accent qui suit la boîte sortie de l'étagère.
   const lamp = new THREE.SpotLight(0xfff2e0, 0, 4, 0.42, 0.85, 1.4);
   lamp.position.set(-0.7, 2.25, SHELF.z + 0.35);
@@ -201,7 +203,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   wallBox(-RX - WALL, -RX, 0, RH, bz0, FRONT + WALL);
   wallBox(RX, RX + WALL, 0, RH, bz0, FRONT + WALL);
   wallBox(-RX, RX, 0, RH, FRONT, FRONT + WALL);
-  wallBox(-RX - WALL, RX + WALL, RH, RH + 0.12, bz0, FRONT + WALL);
+  // Plafond peint en blanc, plus clair que les murs.
+  const ceiling = wallBox(-RX - WALL, RX + WALL, RH, RH + 0.12, bz0, FRONT + WALL);
+  ceiling.material = pbr(plaster, { ru: 1.4, rv: 1.2, coat: 0, tint: 0xffffff, brightness: 1.75, dust: 0, normalScale: 0.5 });
   // Plinthes peintes en blanc cassé.
   const trimPaint = keep(new THREE.MeshPhysicalMaterial({ color: 0xece6da, roughness: 0.42, clearcoat: 0.3, clearcoatRoughness: 0.4 }));
   const skirting = (w: number, d: number, x: number, z: number) => add(room, new RoundedBoxGeometry(w, 0.08, d, 2, 0.004), trimPaint, x, 0.04, z);
@@ -236,7 +240,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const outsideMaterial = keep(new THREE.MeshBasicNodeMaterial());
   outsideMaterial.colorNode = texture(outside, uv()).rgb.mul(1.9);
   add(room, new THREE.PlaneGeometry(9, 4.5), outsideMaterial, WIN.x + 0.6, 1.4, BACK - 3.2, false);
-  const brass = keep(new THREE.MeshStandardMaterial({ color: 0xb08a3c, metalness: 1, roughness: 0.3 }));
 
   // --------------------------------------------------------------- bureau en hêtre
   // Hêtre clair verni, comme la chaise et l'étagère : des meubles blonds des années 90.
@@ -290,16 +293,17 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   report(2);
 
   // --------------------------------------------------------------- étagère
-  const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, woodLook: { ...BEECH, coat: 0.3 }, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width);
+  // Rayonnage en pin brut à lattes ; les boîtes, sans plaque, sont posées sur un niveau.
+  const rack = buildPineRack(keep, beech, dustTex);
+  rack.position.set(SHELF.x, 0, SHELF.z);
+  rack.rotation.y = Math.PI / 2;
+  rack.userData.zone = 'shelf';
+  scene.add(rack);
+  const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width, { furniture: false, plaques: false });
   model.group.position.set(SHELF.x, SHELF.y, SHELF.z);
   model.group.rotation.y = Math.PI / 2;
   model.group.userData.zone = 'shelf';
   scene.add(model.group);
-  // Deux équerres en laiton vieilli sous le meuble.
-  for (const side of [-1, 1]) {
-    const bracket = add(model.group, new THREE.BoxGeometry(0.025, 0.12, 0.14), brass, side * (SHELF.width / 2 - 0.08), -0.62, -0.08);
-    bracket.userData.zone = 'shelf';
-  }
 
   // --------------------------------------------------------------- pipeline de rendu
   const pipeline = new THREE.RenderPipeline(renderer);
@@ -324,7 +328,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Lumière indirecte : le soleil rebondit sur le parquet et réchauffe les murs.
   const gi = ssgi(beauty, preDepth, preNormal, camera);
   gi.resolutionScale = 0.5;
-  gi.sliceCount.value = 2;
+  // Préréglage « High » avec filtrage temporel : moins de grain à convergence égale.
+  gi.sliceCount.value = 3;
   gi.stepCount.value = 12;
   gi.radius.value = 2.5;
   gi.thickness.value = 0.1;
@@ -366,7 +371,10 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let from: Pose = clonePose(current);
   let goal: Pose = clonePose(current);
   let progress = 1;
-  const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); };
+  // Images à rendre encore une fois la scène immobile, pour que le lissage temporel converge.
+  const SETTLE_FRAMES = 90;
+  let settle = SETTLE_FRAMES;
+  const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); settle = SETTLE_FRAMES; };
   const damp = (a: number, b: number, k: number, dt: number) => (reducedMotion ? b : a + (b - a) * (1 - Math.exp(-k * dt)));
   const right = new THREE.Vector3();
   const up = new THREE.Vector3();
@@ -448,7 +456,11 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       : scratch.set(SHELF.x, SHELF.y + 0.15, SHELF.z);
     lamp.target.position.lerp(aim, reducedMotion ? 1 : 1 - Math.exp(-3 * dt));
     lamp.intensity = damp(lamp.intensity, view !== 'shelf' ? 0 : item !== undefined ? 6 : 3, 3, dt);
-    if (busy || performance.now() < awakeUntil) pipeline.render();
+    if (busy) settle = SETTLE_FRAMES;
+    if (busy || performance.now() < awakeUntil || settle > 0) {
+      pipeline.render();
+      settle -= 1;
+    }
   }
 
   resize();
@@ -538,7 +550,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       const rect = canvas.getBoundingClientRect();
       ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
-      const hit = raycaster.intersectObjects([pc.group, desk, chair, model.group, poster, room], true)[0];
+      // Les boîtes d'abord : le volume de clic de l'étagère passe devant elles.
+      const item = raycaster.intersectObjects(model.pickTargets(), true)[0];
+      const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, model.group, poster, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
     },

@@ -155,13 +155,8 @@
 .xp-bios { padding: 18px 26px; color: #b8b8b8; font: 20px/28px "Lucida Console", "Courier New", monospace; }
 .xp-bios__text, .xp-bios__footer { margin: 0; font: inherit; white-space: pre; }
 .xp-bios__footer { position: absolute; left: 26px; bottom: 18px; }
-.xp-bios__award { position: absolute; left: 22px; top: 16px; width: 44px; height: 54px; }
-.xp-bios__award i { position: absolute; inset: 0 6px 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #8fd0ff, #1660c8 60%, #0a2f6e); box-shadow: 0 0 0 3px #e7c64a; }
-.xp-bios__award::before, .xp-bios__award::after { content: ""; position: absolute; bottom: 0; width: 10px; height: 22px; background: #d63b2f; }
-.xp-bios__award::before { left: 10px; transform: skewX(12deg); }
-.xp-bios__award::after { right: 10px; transform: skewX(-12deg); }
-.xp-bios__energy { position: absolute; right: 30px; top: 18px; display: flex; flex-direction: column; align-items: center; width: 150px; padding: 6px 0 4px; border: 3px solid #3fb24a; border-radius: 6px; color: #3fb24a; font: italic 700 30px/1 Georgia, serif; }
-.xp-bios__energy b { color: #ffd43a; font-size: 26px; }
+.xp-bios__award { position: absolute; left: 22px; top: 20px; width: 22px; height: 26px; }
+.xp-bios__footer b { color: #fff; font-weight: 700; }
 /* Démarrage de XP : logo centré, barre aux trois blocs bleus. */
 .xp-boot { display: flex; flex-direction: column; align-items: center; color: #fff; }
 .xp-boot__logo { display: flex; align-items: flex-end; gap: 6px; margin-top: 250px; }
@@ -191,3 +186,5 @@
   background: radial-gradient(ellipse at 15% 20%, rgb(255 255 255 / .35), transparent 45%), linear-gradient(to right, #5a7edc, #6b8fe6 50%, #5a7edc); }
 .xp-splash__welcome { margin-left: 260px; font: italic 700 72px "Franklin Gothic Medium", "Trebuchet MS", Arial, sans-serif; letter-spacing: -1px; text-shadow: 2px 2px 3px rgb(0 0 40 / .35); }
 .xp-splash__shutdown { display: flex; flex-direction: column; align-items: flex-start; gap: 28px; margin-left: 120px; font: 24px "Trebuchet MS", Arial, sans-serif; }
+
+.xp-bios__energy { position: absolute; right: 24px; top: 18px; width: 256px; height: 115px; }
