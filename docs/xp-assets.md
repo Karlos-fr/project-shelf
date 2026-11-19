@@ -25,6 +25,23 @@ Toutes les images viennent du clone open source [ShizukuIchi/winXP](https://gith
 | `user.png` | `windowsIcons/user.png` | avatar de session (échiquier) |
 | `flag.png` | `windowsIcons/windows-off.png`, rogné et réduit (fond transparent) | drapeau du bouton Démarrer |
 | `all-programs.ico` | `windowsIcons/all-programs.ico` | flèche « Tous les programmes » |
+| `ie.png` | `windowsIcons/ie-paper.png` | icône Internet Explorer (titre, adresse) |
+| `wmp.png`, `wmp-small.png` | `windowsIcons/846(32x32).png`, `846(16x16).png` | Lecteur Windows Media |
+| `computer-small.png` | `windowsIcons/676(16x16).png` | Poste de travail (petite) |
+| `documents-small.png` | `windowsIcons/308(16x16).png` | Mes documents (petite) |
+| `folder-small.png`, `folder.png` | `windowsIcons/318(16x16).png`, `318(48x48).png` | dossier |
+| `recycle-small.png` | `windowsIcons/360(32x32).png` | Corbeille (volet de tâches) |
+| `disk.png` | `windowsIcons/334(48x48).png` | Disque local (C:) |
+| `cd.png` | `windowsIcons/111(48x48).png` | Lecteur CD (D:) |
+| `back.png`, `forward.png`, `up.png` | `windowsIcons/back.png`, `forward.png`, `up.png` | Précédente, Suivante, Dossier parent |
+| `stop.png`, `refresh.png`, `home.png` | `windowsIcons/stop.png`, `refresh.png`, `home.png` | Arrêter, Actualiser, Démarrage |
+| `search-large.png`, `favorites.png`, `history.png` | `windowsIcons/299(32x32).png`, `744(32x32).png`, `history.png` | Rechercher, Favoris, Historique |
+| `go.png` | `windowsIcons/290.png` | bouton OK de la barre d'adresse |
+| `throbber.png` | `windowsIcons/windows.png` | logo animé en haut à droite des fenêtres |
+
+## Styles des fenêtres
+
+Les cotes et dégradés des fenêtres Luna (barre de titre, boutons Réduire, Agrandir et Fermer), de la barre des tâches, d'Internet Explorer et du Poste de travail reprennent ceux du même clone, sous licence MIT, réécrits en CSS dans `src/xp/xp-windows.css`. Le Lecteur Windows Media n'existe pas dans le clone ; son habillage est dessiné pour le projet.
 
 ## Ce qui n'est pas repris
 

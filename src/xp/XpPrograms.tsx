@@ -1,0 +1,246 @@
+// ============================================================================
+// XpPrograms — Internet Explorer, Lecteur Windows Media et Explorateur façon XP
+// ----------------------------------------------------------------------------
+// Contenus des fenêtres du bureau XP de la chambre. Internet Explorer affiche la démo
+// d'un projet dans un cadre ; le Lecteur Windows Media lit sa vidéo ; l'Explorateur
+// parcourt le Poste de travail, Mes documents et un dossier par catégorie. Les
+// barres d'outils reprennent la disposition d'origine ; seuls les boutons utiles
+// réagissent, les autres sont présents pour l'aspect.
+// ============================================================================
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import type { XpApp, XpBrowserApp, XpCatalog, XpPlayerApp } from './xp-apps.ts';
+import { SHORTCUT_SVG, svgUrl, type XP_LABELS, type XpFile } from './xp-art.ts';
+
+type Labels = (typeof XP_LABELS)['fr'] | (typeof XP_LABELS)['en'];
+type Asset = (name: XpFile) => string;
+
+// Barre de menus texte, identique dans chaque programme.
+function MenuBar({ labels, asset, extra }: { labels: Labels; asset: Asset; extra?: ReactNode }) {
+  return (
+    <div className="xp-app__menubar">
+      <div className="xp-app__menus" aria-hidden="true">
+        {[labels.menuFile, labels.menuEdit, labels.menuView, labels.menuFavorites, labels.menuTools, labels.menuHelp].map((label) => <span key={label}>{label}</span>)}
+        {extra}
+      </div>
+      <img className="xp-app__throbber" src={asset('throbber')} alt="" draggable={false} />
+    </div>
+  );
+}
+
+type ToolProps = { icon: string; label?: string; title: string; disabled?: boolean; arrow?: boolean; small?: boolean; onClick?: () => void };
+function Tool({ icon, label, title, disabled = false, arrow = false, small = false, onClick }: ToolProps) {
+  return (
+    <button type="button" className="xp-app__tool" disabled={disabled || onClick === undefined} title={title} aria-label={title} onClick={onClick}>
+      <img className={small ? 'is-small' : undefined} src={icon} alt="" draggable={false} />
+      {label !== undefined && <span>{label}</span>}
+      {arrow && <i className="xp-app__arrow" aria-hidden="true" />}
+    </button>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Internet Explorer 6 : barre de menus, boutons, barre d'adresse, page et barre d'état.
+// ----------------------------------------------------------------------------
+export function XpBrowser({ app, labels, asset }: { app: XpBrowserApp; labels: Labels; asset: Asset }) {
+  const [reload, setReload] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const openInTab = () => window.open(app.url, '_blank', 'noopener');
+  return (
+    <div className="xp-app xp-browser">
+      <MenuBar labels={labels} asset={asset} />
+      <div className="xp-app__toolbar">
+        <Tool icon={asset('back')} label={labels.back} title={labels.back} arrow disabled />
+        <Tool icon={asset('forward')} title={labels.forward} arrow disabled />
+        <Tool icon={asset('stop')} title={labels.stop} onClick={() => setLoading(false)} />
+        <Tool icon={asset('refresh')} title={labels.refresh} onClick={() => { setLoading(true); setReload((n) => n + 1); }} />
+        <Tool icon={asset('home')} title={labels.home} onClick={() => { setLoading(true); setReload((n) => n + 1); }} />
+        <span className="xp-app__separator" />
+        <Tool icon={asset('searchLarge')} label={labels.search} title={labels.search} small disabled />
+        <Tool icon={asset('favorites')} label={labels.favorites} title={labels.favorites} small disabled />
+        <Tool icon={asset('history')} title={labels.history} disabled />
+      </div>
+      <div className="xp-app__address">
+        <span className="xp-app__address-title">{labels.address}</span>
+        <span className="xp-app__address-field"><img src={asset('ie')} alt="" /><span>{app.url}</span></span>
+        <button type="button" className="xp-app__go" title={labels.openInTab} onClick={openInTab}><img src={asset('go')} alt="" />{labels.go}</button>
+        <span className="xp-app__address-sep" />
+        <span className="xp-app__links">{labels.links}</span>
+      </div>
+      <div className="xp-browser__page">
+        <iframe key={reload} src={app.url} title={app.name} allow="fullscreen; autoplay; gamepad" onLoad={() => setLoading(false)} />
+      </div>
+      <div className="xp-app__status">
+        <span className="xp-app__status-main"><img src={asset('ie')} alt="" />{loading ? `${app.url}…` : labels.done}</span>
+        <button type="button" className="xp-app__status-link" onClick={openInTab}>{labels.openInTab} ↗</button>
+        <span className="xp-app__status-zone"><img src={asset('ie')} alt="" />{labels.internet}</span>
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
+// Lecteur Windows Media 9 : barre des tâches verticale, écran vidéo, commandes rondes.
+// ----------------------------------------------------------------------------
+export function XpPlayer({ app, labels }: { app: XpPlayerApp; labels: Labels }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [volume, setVolume] = useState(0.8);
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  // Le double-clic sur le raccourci vaut geste utilisateur : la lecture démarre avec le son.
+  useEffect(() => {
+    const video = videoRef.current;
+    if (video === null) return;
+    video.volume = 0.8;
+    void video.play().catch(() => setPlaying(false));
+    return () => { video.pause(); };
+  }, []);
+
+  const video = videoRef.current;
+  const toggle = () => { if (video === null) return; if (video.paused) void video.play(); else video.pause(); };
+  const stop = () => { if (video === null) return; video.pause(); video.currentTime = 0; };
+  const tabs = [labels.nowPlaying, labels.mediaGuide, labels.rip, labels.library, labels.radio, labels.burn, labels.sync];
+  return (
+    <div className="xp-app xp-player">
+      <nav className="xp-player__tabs" aria-hidden="true">
+        {tabs.map((tab, index) => <span key={tab} className={index === 0 ? 'is-active' : undefined}>{tab}</span>)}
+      </nav>
+      <div className="xp-player__main">
+        <div className="xp-player__info"><strong>{app.name}</strong><span>{formatTime(time)} / {formatTime(duration)}</span></div>
+        <div className="xp-player__screen">
+          <video ref={videoRef} src={app.video} poster={app.poster} playsInline preload="metadata" muted={muted}
+            onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} onEnded={() => setPlaying(false)}
+            onTimeUpdate={(event) => setTime(event.currentTarget.currentTime)}
+            onLoadedMetadata={(event) => setDuration(event.currentTarget.duration)}
+            onClick={toggle} onDoubleClick={() => { void videoRef.current?.requestFullscreen?.().catch(() => undefined); }} />
+        </div>
+        <div className="xp-player__controls">
+          <input className="xp-player__seek" type="range" min={0} max={duration || 1} step={0.1} value={time} aria-label={labels.seek}
+            onChange={(event) => { if (video !== null) video.currentTime = Number(event.currentTarget.value); }} />
+          <div className="xp-player__buttons">
+            <button type="button" className={`xp-player__play${playing ? ' is-playing' : ''}`} aria-label={playing ? labels.pause : labels.play} title={playing ? labels.pause : labels.play} onClick={toggle} />
+            <button type="button" className="xp-player__small is-stop" aria-label={labels.stop} title={labels.stop} onClick={stop} />
+            <button type="button" className="xp-player__small is-prev" aria-hidden="true" tabIndex={-1} disabled />
+            <button type="button" className="xp-player__small is-next" aria-hidden="true" tabIndex={-1} disabled />
+            <button type="button" className={`xp-player__small is-mute${muted ? ' is-on' : ''}`} aria-label={labels.mute} aria-pressed={muted} title={labels.mute} onClick={() => setMuted((m) => !m)} />
+            <input className="xp-player__volume" type="range" min={0} max={1} step={0.05} value={volume} aria-label={labels.volume}
+              onChange={(event) => { const v = Number(event.currentTarget.value); setVolume(v); if (video !== null) video.volume = v; }} />
+            <button type="button" className="xp-player__small is-full" aria-label={labels.fullscreen} title={labels.fullscreen}
+              onClick={() => { void videoRef.current?.requestFullscreen?.().catch(() => undefined); }} />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function formatTime(seconds: number): string {
+  if (!Number.isFinite(seconds)) return '00:00';
+  const s = Math.floor(seconds);
+  return `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+}
+
+// Emplacements de l'Explorateur.
+export type XpPlace = 'computer' | 'documents' | 'recycle' | `folder:${string}`;
+
+// ----------------------------------------------------------------------------
+// Explorateur : volet de tâches bleu à gauche, icônes à droite, navigation avec historique.
+// Paramètres : start est le premier emplacement ; onOpenApp lance un projet ; onTitle
+// renomme la fenêtre selon l'emplacement courant.
+// ----------------------------------------------------------------------------
+export function XpExplorer({ start, catalog, labels, asset, onOpenApp, onTitle }: {
+  start: XpPlace; catalog: XpCatalog; labels: Labels; asset: Asset; onOpenApp(id: string): void; onTitle(title: string, icon: string): void;
+}) {
+  const [history, setHistory] = useState<{ stack: XpPlace[]; index: number }>({ stack: [start], index: 0 });
+  const [selected, setSelected] = useState<string | null>(null);
+  const place = history.stack[history.index] ?? start;
+  const go = (next: XpPlace) => {
+    setSelected(null);
+    setHistory(({ stack, index }) => ({ stack: [...stack.slice(0, index + 1), next], index: index + 1 }));
+  };
+  const move = (delta: number) => setHistory(({ stack, index }) => ({ stack, index: Math.max(0, Math.min(stack.length - 1, index + delta)) }));
+  const folder = place.startsWith('folder:') ? catalog.folders.find((f) => `folder:${f.id}` === place) : undefined;
+  const title = place === 'computer' ? labels.myComputer : place === 'documents' ? labels.myDocuments : place === 'recycle' ? labels.recycleBin : folder?.label ?? '';
+  const icon = place === 'computer' ? asset('computerSmall') : place === 'documents' ? asset('documentsSmall') : place === 'recycle' ? asset('recycleSmall') : asset('folderSmall');
+  const parent: XpPlace | null = place === 'documents' ? 'computer' : place.startsWith('folder:') ? 'documents' : null;
+  useEffect(() => { onTitle(title, icon); }, [title, icon]);
+
+  type Item = { id: string; label: string; image: string; poster?: boolean; open?: () => void };
+  const groups: { title?: string; items: Item[] }[] = [];
+  if (place === 'computer') {
+    groups.push({ title: labels.storedFiles, items: [{ id: 'documents', label: labels.myDocuments, image: asset('folder'), open: () => go('documents') }] });
+    groups.push({ title: labels.hardDisks, items: [{ id: 'c', label: labels.localDisk, image: asset('disk'), open: () => go('documents') }] });
+    groups.push({ title: labels.removable, items: [{ id: 'd', label: labels.cdDrive, image: asset('cd') }] });
+  } else if (place === 'documents') {
+    groups.push({ items: catalog.folders.map((f) => ({ id: f.id, label: f.label, image: asset('folder'), open: () => go(`folder:${f.id}`) })) });
+  } else if (folder !== undefined) {
+    groups.push({ items: folder.appIds.flatMap((id) => {
+      const app: XpApp | undefined = catalog.apps[id];
+      return app === undefined ? [] : [{ id, label: app.name, image: app.icon, poster: true, open: () => onOpenApp(id) }];
+    }) });
+  }
+  const count = groups.reduce((sum, group) => sum + group.items.length, 0);
+
+  return (
+    <div className="xp-app xp-explorer">
+      <MenuBar labels={labels} asset={asset} />
+      <div className="xp-app__toolbar">
+        <Tool icon={asset('back')} label={labels.back} title={labels.back} arrow disabled={history.index === 0} onClick={() => move(-1)} />
+        <Tool icon={asset('forward')} title={labels.forward} arrow disabled={history.index >= history.stack.length - 1} onClick={() => move(1)} />
+        <Tool icon={asset('up')} title={labels.up} small disabled={parent === null} onClick={parent === null ? undefined : () => go(parent)} />
+        <span className="xp-app__separator" />
+        <Tool icon={asset('searchLarge')} label={labels.search} title={labels.search} small disabled />
+        <Tool icon={asset('folderSmall')} label={labels.folders} title={labels.folders} small disabled />
+      </div>
+      <div className="xp-app__address">
+        <span className="xp-app__address-title">{labels.address}</span>
+        <span className="xp-app__address-field"><img src={icon} alt="" /><span>{title}</span></span>
+        <span className="xp-app__go is-static"><img src={asset('go')} alt="" />{labels.go}</span>
+      </div>
+      <div className="xp-explorer__content">
+        <aside className="xp-explorer__tasks">
+          <section className="xp-explorer__card">
+            <h3>{place === 'computer' ? labels.systemTasks : labels.fileTasks}</h3>
+            <ul>
+              {(place === 'computer' ? [labels.viewSystemInfo, labels.addRemove] : [labels.makeFolder, labels.shareFolder]).map((task) => <li key={task}><span>{task}</span></li>)}
+            </ul>
+          </section>
+          <section className="xp-explorer__card">
+            <h3>{labels.otherPlaces}</h3>
+            <ul>
+              {place !== 'computer' && <li><button type="button" onClick={() => go('computer')}><img src={asset('computerSmall')} alt="" />{labels.myComputer}</button></li>}
+              {place !== 'documents' && <li><button type="button" onClick={() => go('documents')}><img src={asset('documentsSmall')} alt="" />{labels.myDocuments}</button></li>}
+              {place !== 'recycle' && <li><button type="button" onClick={() => go('recycle')}><img src={asset('recycleSmall')} alt="" />{labels.recycleBin}</button></li>}
+            </ul>
+          </section>
+          <section className="xp-explorer__card">
+            <h3>{labels.details}</h3>
+            <p><strong>{title}</strong><br />{place === 'computer' || place === 'recycle' ? labels.systemFolder : labels.fileFolder}<br />{count} {labels.objects}</p>
+          </section>
+        </aside>
+        <div className="xp-explorer__items" onPointerDown={(event) => { if (event.target === event.currentTarget) setSelected(null); }}>
+          {count === 0 && <p className="xp-explorer__empty">{labels.emptyFolder}</p>}
+          {groups.map((group, index) => (
+            <div key={group.title ?? index} className="xp-explorer__group">
+              {group.title !== undefined && <h4>{group.title}</h4>}
+              <div className={`xp-explorer__grid${group.title === undefined ? ' is-icons' : ''}`}>
+                {group.items.map((item) => (
+                  <button key={item.id} type="button" className="xp-explorer__item" aria-pressed={selected === item.id}
+                    onClick={() => setSelected(item.id)} onDoubleClick={item.open} onKeyDown={(event) => { if (event.key === 'Enter') item.open?.(); }}>
+                    <span className="xp-explorer__icon">
+                      <img src={item.image} alt="" draggable={false} className={item.poster === true ? 'is-poster' : undefined} />
+                      {item.poster === true && <img className="xp-explorer__arrow" src={svgUrl(SHORTCUT_SVG)} alt="" draggable={false} />}
+                    </span>
+                    <span className="xp-explorer__label">{item.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}

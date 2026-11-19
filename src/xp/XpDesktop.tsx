@@ -3,37 +3,45 @@
 // ----------------------------------------------------------------------------
 // Interface HTML à la résolution d'époque (1024 x 768), mise à l'échelle par la page
 // pour couvrir exactement la dalle du moniteur. Elle reprend le fond Bliss et les
-// icônes d'origine de XP : une icône par projet, les icônes système, la barre des
-// tâches avec son horloge et le menu Démarrer. Un double-clic (ou Entrée) sur un
-// projet ouvre sa fiche dans un nouvel onglet.
+// icônes d'origine de XP : une icône par projet, les icônes système, le menu Démarrer
+// et une barre des tâches qui liste les fenêtres ouvertes. Un double-clic (ou Entrée)
+// sur un projet ouvre sa démo dans Internet Explorer ou sa vidéo dans le Lecteur
+// Windows Media ; le Poste de travail et Mes documents s'ouvrent dans l'Explorateur.
 // ============================================================================
-import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { Locale } from '../domain/locale.ts';
-import type { ProjectSummary } from '../domain/project.ts';
-import { assetUrl, formatRoute, type RouteState } from '../domain/routes.ts';
-import { SHORTCUT_SVG, svgUrl, XP_HEIGHT, XP_LABELS, XP_USER, XP_WIDTH, xpAsset } from './xp-art.ts';
+import type { XpCatalog } from './xp-apps.ts';
+import { SHORTCUT_SVG, svgUrl, XP_HEIGHT, XP_LABELS, XP_TASKBAR, XP_USER, XP_WIDTH, xpAsset, type XpFile } from './xp-art.ts';
+import XpWindow, { type XpWindowFrame } from './XpWindow.tsx';
+import { XpBrowser, XpExplorer, XpPlayer, type XpPlace } from './XpPrograms.tsx';
+import './xp-windows.css';
 
 export type XpDesktopProps = {
   locale: Locale;
-  projects: readonly ProjectSummary[];
+  catalog: XpCatalog;
   base: string;
   // Menu Démarrer → Arrêter l'ordinateur.
   onTurnOff: () => void;
 };
 
-type Icon = { id: string; label: string; image: string; shortcut: boolean; href?: string };
+type Icon = { id: string; label: string; image: string; shortcut: boolean; open: () => void };
+type Win = { id: string; appId?: string; place?: XpPlace; title: string; icon: string; frame: XpWindowFrame };
+
+// Surface utile au-dessus de la barre des tâches.
+const AREA = { width: XP_WIDTH, height: XP_HEIGHT - XP_TASKBAR };
 
 // ----------------------------------------------------------------------------
 // Rend le bureau. La taille est fixe ; le parent applique la mise à l'échelle.
 // ----------------------------------------------------------------------------
-export default function XpDesktop({ locale, projects, base, onTurnOff }: XpDesktopProps) {
+export default function XpDesktop({ locale, catalog, base, onTurnOff }: XpDesktopProps) {
   const labels = XP_LABELS[locale];
   const rootRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [clock, setClock] = useState(() => formatClock(new Date()));
-  const route: RouteState = { locale, projectId: null, categories: [], sort: 'updated', q: '' };
-  const asset = (name: Parameters<typeof xpAsset>[1]) => xpAsset(base, name);
+  const [windows, setWindows] = useState<Win[]>([]);
+  const [dragging, setDragging] = useState(false);
+  const asset = (name: XpFile) => xpAsset(base, name);
 
   useEffect(() => {
     rootRef.current?.focus();
@@ -41,20 +49,78 @@ export default function XpDesktop({ locale, projects, base, onTurnOff }: XpDeskt
     return () => window.clearInterval(timer);
   }, []);
 
-  const system: Icon[] = [
-    { id: 'computer', label: labels.myComputer, image: asset('computer'), shortcut: false },
-    { id: 'documents', label: labels.myDocuments, image: asset('documents'), shortcut: false },
-  ];
-  const shortcuts: Icon[] = projects.map((project) => ({
-    id: project.id, label: project.name, image: assetUrl(project.preview.poster, base), shortcut: true,
-    href: formatRoute({ ...route, projectId: project.id }, base),
-  }));
-  const recycle: Icon = { id: 'recycle', label: labels.recycleBin, image: asset('recycle'), shortcut: false };
-
-  function open(icon: Icon): void {
+  // --------------------------------------------------------------- fenêtres
+  const topZ = () => windows.reduce((max, win) => Math.max(max, win.frame.z), 0);
+  const focused = windows.filter((win) => !win.frame.minimized).sort((a, b) => b.frame.z - a.frame.z)[0]?.id ?? null;
+  const update = (id: string, change: (frame: XpWindowFrame) => Partial<XpWindowFrame>) =>
+    setWindows((list) => list.map((win) => (win.id === id ? { ...win, frame: { ...win.frame, ...change(win.frame) } } : win)));
+  const focus = (id: string) => update(id, (frame) => (frame.z === topZ() && !frame.minimized ? {} : { z: topZ() + 1, minimized: false }));
+  function open(win: Omit<Win, 'frame'>, size: { w: number; h: number }): void {
     setStartOpen(false);
-    if (icon.href !== undefined) window.open(icon.href, '_blank', 'noopener');
+    if (windows.some((existing) => existing.id === win.id)) { focus(win.id); return; }
+    // Fenêtres en cascade, comme à l'époque.
+    const step = (windows.length % 8) * 26;
+    const frame: XpWindowFrame = {
+      x: Math.min(AREA.width - size.w, 90 + step), y: Math.min(AREA.height - size.h, 24 + step),
+      w: size.w, h: size.h, z: topZ() + 1, minimized: false, maximized: false,
+    };
+    setWindows((list) => [...list, { ...win, frame }]);
   }
+  function openApp(appId: string): void {
+    const app = catalog.apps[appId];
+    if (app === undefined) return;
+    if (app.kind === 'browser') open({ id: `app:${appId}`, appId, title: `${app.name} - ${labels.ieTitle}`, icon: asset('ie') }, { w: 900, h: 640 });
+    else open({ id: `app:${appId}`, appId, title: `${app.name} - ${labels.player}`, icon: asset('playerSmall') }, { w: 680, h: 500 });
+  }
+  function openPlace(place: XpPlace): void {
+    open({ id: `place:${place}`, place, title: '', icon: asset('folderSmall') }, { w: 740, h: 520 });
+  }
+  const close = (id: string) => setWindows((list) => list.filter((win) => win.id !== id));
+  function toggleTask(id: string): void {
+    const win = windows.find((w) => w.id === id);
+    if (win === undefined) return;
+    if (id === focused) update(id, () => ({ minimized: true }));
+    else focus(id);
+  }
+  // Déplacement : le pointeur est suivi en pixels d'écran, ramenés à l'échelle du bureau.
+  function dragStart(id: string, event: PointerEvent<HTMLElement>): void {
+    const win = windows.find((w) => w.id === id);
+    const root = rootRef.current;
+    if (win === undefined || root === null || win.frame.maximized || event.button !== 0) return;
+    const scale = root.getBoundingClientRect().width / XP_WIDTH;
+    const startX = event.clientX; const startY = event.clientY;
+    const { x, y, w } = win.frame;
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+    setDragging(true);
+    const move = (e: globalThis.PointerEvent) => update(id, () => ({
+      x: Math.max(80 - w, Math.min(AREA.width - 80, x + (e.clientX - startX) / scale)),
+      y: Math.max(0, Math.min(AREA.height - 26, y + (e.clientY - startY) / scale)),
+    }));
+    const end = () => {
+      setDragging(false);
+      target.removeEventListener('pointermove', move);
+      target.removeEventListener('pointerup', end);
+      target.removeEventListener('pointercancel', end);
+    };
+    target.addEventListener('pointermove', move);
+    target.addEventListener('pointerup', end);
+    target.addEventListener('pointercancel', end);
+  }
+  const setTitle = (id: string, title: string, icon: string) =>
+    setWindows((list) => list.map((win) => (win.id === id && (win.title !== title || win.icon !== icon) ? { ...win, title, icon } : win)));
+
+  // --------------------------------------------------------------- icônes
+  const system: Icon[] = [
+    { id: 'computer', label: labels.myComputer, image: asset('computer'), shortcut: false, open: () => openPlace('computer') },
+    { id: 'documents', label: labels.myDocuments, image: asset('documents'), shortcut: false, open: () => openPlace('documents') },
+  ];
+  const shortcuts: Icon[] = catalog.order.flatMap((id) => {
+    const app = catalog.apps[id];
+    return app === undefined ? [] : [{ id, label: app.name, image: app.icon, shortcut: true, open: () => openApp(id) }];
+  });
+  const recycle: Icon = { id: 'recycle', label: labels.recycleBin, image: asset('recycle'), shortcut: false, open: () => openPlace('recycle') };
+
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     if (event.key === 'Escape' && startOpen) {
       setStartOpen(false);
@@ -68,8 +134,8 @@ export default function XpDesktop({ locale, projects, base, onTurnOff }: XpDeskt
   const renderIcon = (icon: Icon) => (
     <button key={icon.id} type="button" className="xp-icon" aria-pressed={selected === icon.id}
       title={icon.shortcut ? `${labels.shortcut} ${icon.label}` : icon.label}
-      onClick={() => { setSelected(icon.id); setStartOpen(false); }} onDoubleClick={() => open(icon)}
-      onKeyDown={(event) => { if (event.key === 'Enter') open(icon); }}>
+      onClick={() => { setSelected(icon.id); setStartOpen(false); }} onDoubleClick={icon.open}
+      onKeyDown={(event) => { if (event.key === 'Enter') icon.open(); }}>
       <span className="xp-icon__image">
         <img src={icon.image} alt="" draggable={false} className={icon.shortcut ? 'is-poster' : undefined} />
         {icon.shortcut && <img className="xp-icon__arrow" src={svgUrl(SHORTCUT_SVG)} alt="" draggable={false} />}
@@ -77,15 +143,32 @@ export default function XpDesktop({ locale, projects, base, onTurnOff }: XpDeskt
       <span className="xp-icon__label">{icon.label}</span>
     </button>
   );
-  const place = (name: Parameters<typeof xpAsset>[1], label: string, strong = false) => (
-    <li><button type="button" role="menuitem" disabled><img src={asset(name)} alt="" />{strong ? <strong>{label}</strong> : <span>{label}</span>}</button></li>
+  const place = (name: XpFile, label: string, strong = false, onClick?: () => void) => (
+    <li><button type="button" role="menuitem" disabled={onClick === undefined} onClick={onClick}><img src={asset(name)} alt="" />{strong ? <strong>{label}</strong> : <span>{label}</span>}</button></li>
   );
+  const windowLabels = { minimize: labels.minimize, maximize: labels.maximize, restore: labels.restore, close: labels.close };
 
   return (
-    <div ref={rootRef} className="xp" style={{ width: XP_WIDTH, height: XP_HEIGHT, backgroundImage: `url(${asset('wallpaper')})` }}
+    <div ref={rootRef} className={`xp${dragging ? ' is-dragging' : ''}`} style={{ width: XP_WIDTH, height: XP_HEIGHT, backgroundImage: `url(${asset('wallpaper')})` }}
       role="region" aria-label={labels.desktop} tabIndex={-1} onKeyDown={handleKeyDown} onPointerDown={handleBackground}>
       <div className="xp__icons" onPointerDown={handleBackground}>{[...system, ...shortcuts].map(renderIcon)}</div>
       <div className="xp__recycle">{renderIcon(recycle)}</div>
+      {windows.map((win) => {
+        const app = win.appId === undefined ? undefined : catalog.apps[win.appId];
+        return (
+          <XpWindow key={win.id} title={win.title} icon={win.icon} frame={win.frame} focused={win.id === focused} labels={windowLabels} area={AREA}
+            onFocus={() => focus(win.id)} onMinimize={() => update(win.id, () => ({ minimized: true }))}
+            onToggleMaximize={() => update(win.id, (frame) => ({ maximized: !frame.maximized }))} onClose={() => close(win.id)}
+            onDragStart={(event) => dragStart(win.id, event)}>
+            {app?.kind === 'browser' && <XpBrowser app={app} labels={labels} asset={asset} />}
+            {app?.kind === 'player' && <XpPlayer app={app} labels={labels} />}
+            {win.place !== undefined && (
+              <XpExplorer start={win.place} catalog={catalog} labels={labels} asset={asset} onOpenApp={openApp}
+                onTitle={(title, icon) => setTitle(win.id, title, icon)} />
+            )}
+          </XpWindow>
+        );
+      })}
       {startOpen && (
         <div className="xp-start-menu" role="menu" aria-label={labels.start}>
           <div className="xp-start-menu__user">
@@ -97,20 +180,20 @@ export default function XpDesktop({ locale, projects, base, onTurnOff }: XpDeskt
               {shortcuts.slice(0, 7).flatMap((icon, index) => [
                 ...(index === 2 ? [<li key="pinned-rule" className="xp-start-menu__rule" aria-hidden="true" />] : []),
                 <li key={icon.id}>
-                  <button type="button" role="menuitem" onClick={() => open(icon)}>
+                  <button type="button" role="menuitem" onClick={icon.open}>
                     <img src={icon.image} alt="" className="is-poster" />
                     <span>{icon.label}</span>
                   </button>
                 </li>,
               ])}
               <li className="xp-start-menu__rule xp-start-menu__all-rule" aria-hidden="true" />
-              <li className="xp-start-menu__all"><button type="button" role="menuitem" disabled><span>{labels.allPrograms}</span><img src={asset('allPrograms')} alt="" /></button></li>
+              <li className="xp-start-menu__all"><button type="button" role="menuitem" onClick={() => openPlace('documents')}><span>{labels.allPrograms}</span><img src={asset('allPrograms')} alt="" /></button></li>
             </ul>
             <ul className="xp-start-menu__places">
-              {place('documents', labels.myDocuments, true)}
+              {place('documents', labels.myDocuments, true, () => openPlace('documents'))}
               {place('pictures', labels.myPictures, true)}
               {place('music', labels.myMusic, true)}
-              {place('computer', labels.myComputer, true)}
+              {place('computer', labels.myComputer, true, () => openPlace('computer'))}
               <li className="xp-start-menu__rule" aria-hidden="true" />
               {place('controlPanel', labels.controlPanel)}
               <li className="xp-start-menu__rule" aria-hidden="true" />
@@ -127,11 +210,18 @@ export default function XpDesktop({ locale, projects, base, onTurnOff }: XpDeskt
       )}
       <div className="xp-taskbar">
         <button type="button" className="xp-start" aria-haspopup="menu" aria-expanded={startOpen}
-          onClick={() => setStartOpen((open) => !open)}>
+          onClick={() => setStartOpen((isOpen) => !isOpen)}>
           <img src={asset('flag')} alt="" draggable={false} />
           <span>{labels.start}</span>
         </button>
-        <div className="xp-taskbar__tasks" />
+        <div className="xp-taskbar__tasks">
+          {windows.map((win) => (
+            <button key={win.id} type="button" className={`xp-task${win.id === focused ? ' is-focused' : ''}`} title={win.title} onClick={() => toggleTask(win.id)}>
+              <img src={win.icon} alt="" draggable={false} />
+              <span>{win.title}</span>
+            </button>
+          ))}
+        </div>
         <div className="xp-tray"><time>{clock}</time></div>
       </div>
     </div>

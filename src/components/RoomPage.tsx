@@ -17,11 +17,14 @@ import { CRASH_GRACE_MS, readCrashFlag, writeCrashFlag } from '../shelf/crash-gu
 import { selectShelfItems } from '../shelf/shelf-items.ts';
 import type { RoomScene, RoomView, RoomZone } from '../room/room-scene.ts';
 import XpDesktop from '../xp/XpDesktop.tsx';
+import type { XpCatalog } from '../xp/xp-apps.ts';
 import { XP_CORNER, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
 
 export type RoomPageProps = {
   config: SiteConfig;
   summaries: ProjectSummary[];
+  // Raccourcis, fenêtres et dossiers du bureau XP, calculés au build.
+  xp: XpCatalog;
   locale: Locale;
 };
 
@@ -35,7 +38,7 @@ type ScreenRect = { left: number; top: number; width: number; height: number };
 // ----------------------------------------------------------------------------
 // Rend l'en-tête, la scène plein cadre avec ses commandes, puis l'index des projets.
 // ----------------------------------------------------------------------------
-export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
+export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: RoomPageProps) {
   const messages = MESSAGES[locale];
   const route: RouteState = { locale, projectId: null, categories: [], sort: 'updated', q: '' };
   const base = config.base;
@@ -213,7 +216,7 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
         {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{labels[zoneView(hover.zone)]}</span>}
         {view === 'screen' && screenRect !== null && (
           <div className="room__screen" style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}>
-            <XpDesktop locale={locale} projects={summaries} base={base} onTurnOff={() => goTo('desk')} />
+            <XpDesktop locale={locale} catalog={xpCatalog} base={base} onTurnOff={() => goTo('desk')} />
           </div>
         )}
         {view === 'screen' && sceneState === 'ready' && <button type="button" className="room__exit" onClick={() => goTo('desk')}>{xp.exit}</button>}

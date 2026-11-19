@@ -1,0 +1,150 @@
+/* ============================================================================
+   XpWindows — Fenêtres Luna, Internet Explorer 6, Lecteur Windows Media 9 et
+   Explorateur du bureau XP de la chambre. Cotes et dégradés repris du clone winXP
+   de ShizukuIchi (licence MIT) ; le Lecteur Windows Media est dessiné pour le projet.
+   ============================================================================ */
+
+/* Pendant un déplacement, les pages des fenêtres ne doivent pas capter le pointeur. */
+.xp.is-dragging iframe, .xp.is-dragging video { pointer-events: none; }
+
+/* ---------------------------------------------------------------- Cadre de fenêtre */
+.xp-window { position: absolute; top: 0; left: 0; display: flex; flex-direction: column; padding: 3px; border-radius: 8px 8px 0 0; background: #6582f5; box-shadow: 2px 2px 6px rgb(0 0 0 / .35); }
+.xp-window[hidden] { display: none; }
+.xp-window.is-focused { background: #0831d9; }
+.xp-window.is-maximized { padding: 0; border-radius: 0; }
+.xp-window__title-bg { position: absolute; inset: 0 0 auto; height: 28px; overflow: hidden; border-radius: 8px 8px 0 0; pointer-events: none;
+  background: linear-gradient(to bottom, #7697e7 0%, #7e9ee3 3%, #94afe8 6%, #97b4e9 8%, #82a5e4 14%, #7c9fe2 17%, #7996de 25%, #7b99e1 56%, #82a9e9 81%, #80a5e7 89%, #7b96e1 94%, #7a93df 97%, #abbae3 100%); }
+.xp-window.is-focused .xp-window__title-bg {
+  background: linear-gradient(to bottom, #0058ee 0%, #3593ff 4%, #288eff 6%, #127dff 8%, #036ffc 10%, #0262ee 14%, #0057e5 20%, #0054e3 24%, #0055eb 56%, #005bf5 66%, #026afe 76%, #0062ef 86%, #0052d6 92%, #0040ab 94%, #003092 100%); }
+.xp-window.is-maximized .xp-window__title-bg { border-radius: 0; }
+.xp-window__title-bg::before, .xp-window__title-bg::after { content: ""; position: absolute; top: 0; bottom: 0; width: 15px; opacity: .3; }
+.xp-window__title-bg::before { left: 0; background: linear-gradient(to right, #1638e6 0%, transparent 100%); }
+.xp-window__title-bg::after { right: 0; opacity: .4; background: linear-gradient(to left, #1638e6 0%, transparent 100%); }
+.xp-window.is-focused .xp-window__title-bg::before, .xp-window.is-focused .xp-window__title-bg::after { opacity: 1; }
+.xp-window__title { position: absolute; left: 3px; right: 3px; top: 0; display: flex; align-items: center; height: 25px; color: #fff; font: 700 12px/25px "Trebuchet MS", Tahoma, sans-serif; letter-spacing: .5px; text-shadow: 1px 1px #000; cursor: default; touch-action: none; }
+.xp-window.is-maximized .xp-window__title { left: 0; right: 0; }
+.xp-window__title > img { width: 15px; height: 15px; margin: 0 3px 0 1px; }
+.xp-window__caption { flex: 1; overflow: hidden; padding-right: 5px; white-space: nowrap; text-overflow: ellipsis; pointer-events: none; }
+.xp-window__buttons { display: flex; align-items: center; height: 22px; margin: -1px 1px 0 0; opacity: .6; }
+.xp-window.is-focused .xp-window__buttons { opacity: 1; }
+.xp-window__button { position: relative; width: 22px; height: 22px; margin-right: 1px; padding: 0; border: 1px solid #fff; border-radius: 3px; cursor: pointer;
+  box-shadow: inset 0 -1px 2px 1px #4646ff; background-image: radial-gradient(circle at 90% 90%, #0054e9 0%, #2263d5 55%, #4479e4 70%, #a3bbec 90%, #fff 100%); }
+.xp-window__button:hover { filter: brightness(120%); }
+.xp-window__button:hover:active { filter: brightness(90%); }
+.xp-window__button.is-minimize::before { content: ""; position: absolute; left: 4px; top: 13px; width: 8px; height: 3px; background: #fff; }
+.xp-window__button.is-maximize::before { content: ""; position: absolute; left: 4px; top: 4px; width: 12px; height: 12px; box-shadow: inset 0 3px #fff, inset 0 0 0 1px #fff; }
+.xp-window__button.is-restore::before { content: ""; position: absolute; left: 7px; top: 4px; width: 8px; height: 8px; box-shadow: inset 0 2px #fff, inset 0 0 0 1px #fff; }
+.xp-window__button.is-restore::after { content: ""; position: absolute; left: 4px; top: 7px; width: 8px; height: 8px; background: #136dff; box-shadow: inset 0 2px #fff, inset 0 0 0 1px #fff, 1px -1px #136dff; }
+.xp-window__button.is-close { box-shadow: inset 0 -1px 2px 1px #da4600; background-image: radial-gradient(circle at 90% 90%, #cc4600 0%, #dc6527 55%, #cd7546 70%, #ffccb2 90%, #fff 100%); }
+.xp-window__button.is-close::before, .xp-window__button.is-close::after { content: ""; position: absolute; left: 9px; top: 2px; width: 2px; height: 16px; background: #fff; transform: rotate(45deg); }
+.xp-window__button.is-close::after { transform: rotate(-45deg); }
+.xp-window__body { position: relative; flex: 1; min-height: 0; margin-top: 25px; background: #ece9d8; }
+
+/* ---------------------------------------------------------------- Chrome commun des programmes */
+.xp-app { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; background: linear-gradient(to right, #edede5 0%, #ede8cd 100%); font-size: 11px; color: #000; }
+.xp-app button { font: inherit; }
+.xp-app__menubar { position: relative; display: flex; flex-shrink: 0; align-items: center; height: 24px; border-bottom: 1px solid rgb(255 255 255 / .7); }
+.xp-app__menus { display: flex; flex: 1; align-items: center; height: 23px; padding-left: 2px; border-right: 1px solid rgb(0 0 0 / .15); border-bottom: 1px solid rgb(0 0 0 / .15); }
+.xp-app__menus span { padding: 0 6px; line-height: 20px; }
+.xp-app__throbber { height: 100%; border-left: 1px solid #fff; border-bottom: 1px solid rgb(0 0 0 / .1); }
+.xp-app__toolbar { display: flex; flex-shrink: 0; align-items: center; height: 36px; padding: 1px 3px 0; border-bottom: 1px solid rgb(0 0 0 / .1); }
+.xp-app__tool { display: flex; align-items: center; height: 100%; padding: 0; border: 1px solid transparent; border-radius: 3px; background: none; color: #000; cursor: pointer; }
+.xp-app__tool:not(:disabled):hover { border-color: rgb(0 0 0 / .1); box-shadow: inset 0 -1px 1px rgb(0 0 0 / .1); }
+.xp-app__tool:not(:disabled):hover:active { border-color: #b9b9b9; background: #dedede; }
+.xp-app__tool:not(:disabled):hover:active > * { transform: translate(1px, 1px); }
+.xp-app__tool:disabled { cursor: default; filter: grayscale(1); opacity: .7; }
+.xp-app__tool img { width: 30px; height: 30px; }
+.xp-app__tool img.is-small { width: 22px; height: 22px; margin: 0 4px 0 1px; }
+.xp-app__tool span { margin-right: 4px; }
+.xp-app__arrow { display: flex; align-items: center; height: 100%; margin: 0 4px; }
+.xp-app__arrow::before { content: ""; border-style: solid; border-width: 3px 3px 0; border-color: #000 transparent; }
+.xp-app__separator { width: 1px; height: 90%; margin: 0 2px; background: rgb(0 0 0 / .2); }
+.xp-app__address { display: flex; flex-shrink: 0; align-items: center; height: 22px; padding: 0 2px 2px; border-top: 1px solid rgb(255 255 255 / .7); box-shadow: inset 0 -2px 3px -1px #2d2d2d; }
+.xp-app__address-title { padding: 5px; color: rgb(0 0 0 / .5); }
+.xp-app__address-field { position: relative; display: flex; flex: 1; align-items: center; height: 100%; overflow: hidden; border: 1px solid rgb(122 122 255 / .6); background: #fff; }
+.xp-app__address-field img { width: 14px; height: 14px; margin: 0 2px; }
+.xp-app__address-field span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; user-select: text; }
+.xp-app__go { display: flex; align-items: center; gap: 3px; height: 100%; padding: 0 12px 0 5px; border: 0; background: none; color: #000; cursor: pointer; }
+.xp-app__go img { height: 95%; border: 1px solid rgb(255 255 255 / .2); }
+.xp-app__go.is-static { cursor: default; }
+.xp-app__address-sep { width: 1px; height: 100%; background: rgb(0 0 0 / .1); box-shadow: 1px 0 rgb(255 255 255 / .7); }
+.xp-app__links { padding: 0 18px 0 5px; color: rgb(0 0 0 / .5); }
+.xp-app__status { display: flex; flex-shrink: 0; align-items: center; height: 20px; padding-top: 2px; background: #ece9d8; box-shadow: inset 0 1px 3px rgb(50 50 50 / .8); }
+.xp-app__status img { width: 14px; height: 14px; margin-right: 4px; }
+.xp-app__status-main { display: flex; flex: 1; align-items: center; overflow: hidden; padding-left: 2px; white-space: nowrap; }
+.xp-app__status-link { margin-right: 6px; padding: 0 4px; border: 0; background: none; color: #0033cc; cursor: pointer; text-decoration: underline; }
+.xp-app__status-zone { display: flex; align-items: center; width: 150px; height: 100%; padding-left: 4px; border-left: 1px solid rgb(0 0 0 / .15); }
+
+/* ---------------------------------------------------------------- Internet Explorer */
+.xp-browser__page { position: relative; flex: 1; min-height: 0; border-left: 1px solid #6f6f6f; background: #fff; }
+.xp-browser__page iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+
+/* ---------------------------------------------------------------- Lecteur Windows Media 9 */
+.xp-player { flex-direction: row; background: linear-gradient(to bottom, #2b4c8c, #0f1f45); color: #e6edff; }
+.xp-player__tabs { display: flex; flex-direction: column; flex-shrink: 0; width: 108px; padding: 10px 0; background: linear-gradient(to right, #152c63, #2a4f9a); box-shadow: inset -1px 0 #0a1638; }
+.xp-player__tabs span { padding: 6px 10px; color: #c9d7ff; font-weight: 700; line-height: 1.2; }
+.xp-player__tabs span.is-active { margin: 0 6px 0 0; border-radius: 0 10px 10px 0; background: linear-gradient(to bottom, #6f9bf2, #3a68d1); color: #fff; box-shadow: inset 0 1px rgb(255 255 255 / .4); }
+.xp-player__main { display: flex; flex: 1; flex-direction: column; min-width: 0; }
+.xp-player__info { display: flex; justify-content: space-between; gap: 8px; padding: 5px 10px; background: linear-gradient(to bottom, #3c63b3, #23408a); border-bottom: 1px solid #0a1638; }
+.xp-player__info strong { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.xp-player__screen { position: relative; flex: 1; min-height: 0; background: #000; }
+.xp-player__screen video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #000; }
+.xp-player__controls { flex-shrink: 0; padding: 4px 10px 6px; background: linear-gradient(to bottom, #5c84d4 0%, #2f56a8 40%, #1c3778 100%); border-top: 1px solid #8fb0ef; }
+.xp-player__seek { width: 100%; height: 10px; margin: 0 0 4px; accent-color: #9fd2ff; }
+.xp-player__buttons { display: flex; align-items: center; gap: 6px; }
+.xp-player__play { position: relative; width: 38px; height: 38px; padding: 0; border: 1px solid #0b2a6e; border-radius: 50%; cursor: pointer;
+  background: radial-gradient(circle at 40% 30%, #ffffff 0%, #b9dcff 18%, #3f8af0 55%, #144aa8 100%); box-shadow: 0 1px 2px rgb(0 0 0 / .6), inset 0 -2px 4px rgb(0 0 0 / .35); }
+.xp-player__play::before { content: ""; position: absolute; left: 15px; top: 11px; border-style: solid; border-width: 8px 0 8px 12px; border-color: transparent transparent transparent #fff; filter: drop-shadow(0 1px 0 rgb(0 0 0 / .4)); }
+.xp-player__play.is-playing::before { left: 12px; top: 12px; width: 4px; height: 14px; border: 0; background: #fff; box-shadow: 8px 0 #fff; }
+.xp-player__small { position: relative; width: 24px; height: 24px; padding: 0; border: 1px solid #0b2a6e; border-radius: 50%; cursor: pointer;
+  background: radial-gradient(circle at 40% 30%, #e8f2ff 0%, #8fb7f2 30%, #3466c4 75%, #1a3f8f 100%); box-shadow: 0 1px 1px rgb(0 0 0 / .5); }
+.xp-player__small:disabled { cursor: default; opacity: .6; }
+.xp-player__small.is-stop::before { content: ""; position: absolute; inset: 7px; background: #fff; }
+.xp-player__small.is-prev::before, .xp-player__small.is-next::before { content: ""; position: absolute; top: 7px; border-style: solid; border-width: 5px 7px; border-color: transparent; }
+.xp-player__small.is-prev::before { left: 1px; border-right-color: #fff; }
+.xp-player__small.is-next::before { left: 8px; border-left-color: #fff; }
+.xp-player__small.is-mute::before { content: ""; position: absolute; left: 6px; top: 8px; width: 4px; height: 6px; background: #fff; box-shadow: 3px 0 0 1px #fff; }
+.xp-player__small.is-mute.is-on::after { content: ""; position: absolute; left: 3px; top: 10px; width: 16px; height: 2px; background: #ff5a3c; transform: rotate(-45deg); }
+.xp-player__small.is-full::before { content: ""; position: absolute; inset: 6px; border: 2px solid #fff; border-radius: 1px; }
+.xp-player__volume { width: 80px; accent-color: #9fd2ff; }
+.xp-player__buttons .is-full { margin-left: auto; }
+
+/* ---------------------------------------------------------------- Explorateur */
+.xp-explorer__content { display: flex; flex: 1; min-height: 0; border: 1px solid rgb(0 0 0 / .4); border-top-width: 0; background: #fff; }
+.xp-explorer__tasks { flex-shrink: 0; width: 190px; overflow: auto; padding: 10px; background: linear-gradient(to bottom, #748aff 0%, #4057d3 100%); }
+.xp-explorer__card { overflow: hidden; border-radius: 3px 3px 0 0; }
+.xp-explorer__card + .xp-explorer__card { margin-top: 12px; }
+.xp-explorer__card h3 { display: flex; align-items: center; height: 23px; margin: 0; padding: 0 2px 0 11px; color: #0c327d; font-size: 11px; font-weight: 700;
+  background: linear-gradient(to right, #f0f0ff 0, #f0f0ff 30%, #a8bcff 100%); }
+.xp-explorer__card ul, .xp-explorer__card p { margin: 0; padding: 5px 10px; list-style: none; background: linear-gradient(to right, #b4c8fb 0%, #a4b9fb 50%, #b4c8fb 100%); color: #0c327d; font-size: 10px; line-height: 14px; }
+.xp-explorer__card p { color: #000; }
+.xp-explorer__card li { margin-bottom: 2px; }
+.xp-explorer__card li button { display: flex; align-items: center; gap: 5px; padding: 0; border: 0; background: none; color: #0c327d; cursor: pointer; font-size: 10px; text-align: left; }
+.xp-explorer__card li button:hover { color: #2b72ff; text-decoration: underline; }
+.xp-explorer__card li img { width: 14px; height: 14px; }
+.xp-explorer__items { flex: 1; min-width: 0; overflow: auto; padding: 4px 0 0; }
+.xp-explorer__group h4 { position: relative; width: 300px; margin: 6px 0 0; padding: 2px 0 3px 12px; font-size: 11px; font-weight: 700; }
+.xp-explorer__group h4::after { content: ""; position: absolute; left: 0; bottom: 0; width: 100%; height: 1px; background: linear-gradient(to right, #70bfff 0, #fff 100%); }
+.xp-explorer__grid { display: flex; flex-wrap: wrap; padding: 15px 15px 0; }
+.xp-explorer__item { display: flex; align-items: center; gap: 5px; width: 200px; margin-bottom: 15px; padding: 2px; border: 0; background: none; color: #000; text-align: left; cursor: default; }
+.xp-explorer__grid.is-icons .xp-explorer__item { flex-direction: column; width: 96px; text-align: center; }
+.xp-explorer__icon { position: relative; display: block; width: 48px; height: 48px; flex-shrink: 0; }
+.xp-explorer__icon img { width: 48px; height: 48px; }
+.xp-explorer__icon img.is-poster { object-fit: cover; border-radius: 3px; box-shadow: 0 1px 2px rgb(0 0 0 / .4); }
+.xp-explorer__arrow { position: absolute; left: 0; bottom: 0; width: 14px !important; height: 14px !important; }
+.xp-explorer__label { padding: 0 2px; line-height: 13px; overflow-wrap: anywhere; }
+.xp-explorer__item[aria-pressed="true"] .xp-explorer__label { background: #316ac5; color: #fff; }
+.xp-explorer__item[aria-pressed="true"] .xp-explorer__icon img { filter: brightness(.75) sepia(1) hue-rotate(185deg) saturate(3); }
+.xp-explorer__item:focus-visible { outline: 1px dotted #000; }
+.xp-explorer__empty { margin: 20px; color: #555; }
+
+/* ---------------------------------------------------------------- Barre des tâches */
+.xp-taskbar { background: linear-gradient(to bottom, #1f2f86 0, #3165c4 3%, #3682e5 6%, #4490e6 10%, #3883e5 12%, #2b71e0 15%, #2663da 18%, #235bd6 20%, #2258d5 23%, #2157d6 38%, #245ddb 54%, #2562df 86%, #245fdc 89%, #2158d4 92%, #1d4ec0 95%, #1941a5 98%) !important; }
+.xp-taskbar__tasks { display: flex; gap: 2px; min-width: 0; padding: 0 4px 0 10px; }
+.xp-task { position: relative; display: flex; flex: 1; align-items: center; gap: 5px; max-width: 160px; min-width: 0; height: 22px; margin-top: 4px; padding: 0 8px; border: 0; border-radius: 2px; color: #fff; font-size: 11px; cursor: pointer;
+  background: #3c81f3; box-shadow: inset -1px 0 rgb(0 0 0 / .3), inset 1px 1px 1px rgb(255 255 255 / .2); }
+.xp-task:hover { background: #53a3ff; }
+.xp-task.is-focused { background: #1e52b7; box-shadow: inset 0 0 1px 1px rgb(0 0 0 / .2), inset 1px 0 1px rgb(0 0 0 / .7); }
+.xp-task img { width: 15px; height: 15px; flex-shrink: 0; }
+.xp-task span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.xp-tray { background: linear-gradient(to bottom, #0c59b9 1%, #139ee9 6%, #18b5f2 10%, #139beb 14%, #1290e8 19%, #0d8dea 63%, #0d9ff1 81%, #0f9eed 88%, #119be9 91%, #1392e2 94%, #137ed7 97%, #095bc9 100%) !important; border-left: 1px solid #1042af !important; box-shadow: inset 1px 0 1px #18bbff !important; }
