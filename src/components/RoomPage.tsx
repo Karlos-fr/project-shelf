@@ -6,7 +6,7 @@
 // sortis en boîte. Sans JavaScript ou sans WebGPU/WebGL, la page garde le titre et
 // la liste des liens vers les fiches complètes.
 // ============================================================================
-import { useEffect, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import type { SiteConfig } from '../config/site.ts';
 import type { Locale } from '../domain/locale.ts';
 import type { ProjectSummary } from '../domain/project.ts';
@@ -20,7 +20,7 @@ import XpDesktop from '../xp/XpDesktop.tsx';
 import { AwardBios, XpBoot, XpSplash } from '../xp/XpPower.tsx';
 import type { XpCatalog } from '../xp/xp-apps.ts';
 import { XP_CORNER, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
-import type { PcPower } from '../room/pc-model.ts';
+import type { PcPower, PcScreen } from '../room/pc-model.ts';
 
 export type RoomPageProps = {
   config: SiteConfig;
@@ -46,6 +46,8 @@ const PC_NEXT: Partial<Record<PcState, [number, PcState]>> = {
 const BOOTING: readonly PcState[] = ['warmup', 'bios', 'boot', 'welcome'];
 // Voyants et dalle 3D : éteint dès que l'image s'écrase, occupé pendant les séquences.
 const powerOf = (state: PcState): PcPower => (state === 'on' ? 'on' : state === 'off' || state === 'collapse' ? 'off' : 'busy');
+// Image de la dalle 3D pour chaque état : la séquence continue quand on regarde ailleurs.
+const screenOf = (state: PcState): PcScreen => ({ on: 'desktop', shutdown: 'shutdown', collapse: 'black', off: 'black', warmup: 'black', bios: 'bios', boot: 'boot', welcome: 'welcome' } as const)[state];
 
 // ----------------------------------------------------------------------------
 // Rend la scène plein cadre, sans commande : on clique dans la pièce pour s'y déplacer.
@@ -69,6 +71,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [zoomed, setZoomed] = useState(-1);
   const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
   const [pc, setPc] = useState<PcState>('on');
+  // Début de la phase en cours : le BIOS reprend là où il en était si l'on revient à l'écran.
+  const phaseStart = useMemo(() => performance.now(), [pc]);
 
   // Charge la scène dès l'hydratation : la chambre est tout le contenu de la page.
   useEffect(() => {
@@ -132,6 +136,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   // Enchaîne les écrans d'allumage et d'extinction, puis met voyants et dalle à jour.
   useEffect(() => {
     sceneRef.current?.setPower(powerOf(pc));
+    sceneRef.current?.setScreen(screenOf(pc));
     const next = PC_NEXT[pc];
     if (next === undefined) return;
     const timer = window.setTimeout(() => setPc(next[1]), next[0]);
@@ -155,8 +160,6 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
   function goTo(next: RoomView): void {
-    // Quitter l'écran pendant une séquence la termine aussitôt.
-    if (next !== 'screen') setPc((state) => (BOOTING.includes(state) ? 'on' : state === 'shutdown' || state === 'collapse' ? 'off' : state));
     setView(next);
     setZoomed(-1);
     setActive(-1);
@@ -247,7 +250,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} onTurnOff={() => setPc('shutdown')} />}
             {(pc === 'shutdown' || pc === 'collapse') && <div className="room__tube"><XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="shutdown" /></div>}
             {pc === 'warmup' && <div className="xp-power" />}
-            {pc === 'bios' && <AwardBios />}
+            {pc === 'bios' && <AwardBios startedAt={phaseStart} />}
             {pc === 'boot' && <XpBoot logo={xpAsset(base, 'logo')} />}
             {pc === 'welcome' && <XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="welcome" />}
           </div>

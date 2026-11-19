@@ -26,6 +26,8 @@ export type PcEnv = {
 };
 
 export type PcPower = 'on' | 'off' | 'busy';
+// Image de la dalle vue de loin : bureau, noir, BIOS, logo de démarrage, écran bleu d'accueil ou d'arrêt.
+export type PcScreen = 'desktop' | 'black' | 'bios' | 'boot' | 'welcome' | 'shutdown';
 
 export type PcModel = {
   group: THREE.Group;
@@ -37,6 +39,8 @@ export type PcModel = {
   screenNormal(): THREE.Vector3;
   // Allumé, éteint (voyant d'écran orange de veille, dalle noire) ou occupé (disque dur qui clignote).
   setPower(state: PcPower): void;
+  // Ce qu'affiche la dalle 3D pendant les séquences, quand l'interface HTML n'est pas devant.
+  setScreen(phase: PcScreen): void;
   // Anime le voyant du disque dur ; retour : vrai tant qu'il faut redessiner.
   update(time: number): boolean;
 };
@@ -172,6 +176,10 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   }
   glassGeometry.computeVertexNormals();
   const screenCanvas = await paintDesktop(env);
+  // Copie du bureau peint, pour le réafficher après une séquence.
+  const [desktopCopy, desktopContext] = canvas2d(XP_WIDTH, XP_HEIGHT);
+  desktopContext.drawImage(screenCanvas, 0, 0);
+  const logo = await loadImage(env.asset('logo')).catch(() => null);
   const screenTexture = keep(new THREE.CanvasTexture(screenCanvas));
   screenTexture.colorSpace = THREE.SRGBColorSpace;
   screenTexture.anisotropy = maxAniso;
@@ -281,9 +289,16 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
       monitorLed.emissive.setHex(on ? 0x32ff4a : 0xffa000);
       monitorLed.color.setHex(on ? 0x1f8f2a : 0x8a5a10);
       monitorLed.emissiveIntensity = on ? 2 : 1.4;
-      glass.emissiveIntensity = state === 'on' ? 0.95 : 0;
-      spill.intensity = state === 'on' ? 0.35 : 0;
+      // Allumé ou occupé, la dalle s'éclaire ; éteint, elle redevient un verre noir.
+      glass.emissiveIntensity = on ? 0.95 : 0;
+      spill.intensity = state === 'on' ? 0.35 : on ? 0.15 : 0;
       diskLed.emissiveIntensity = 0.2;
+    },
+    setScreen(phase) {
+      const context = screenCanvas.getContext('2d');
+      if (context === null) return;
+      paintPhase(context, phase, desktopCopy, logo, env.labels.start === 'start' ? 'en' : 'fr');
+      screenTexture.needsUpdate = true;
     },
     update(time) {
       if (powerState !== 'busy') return false;
@@ -505,4 +520,64 @@ function loft(outer: THREE.Vector2[], z0: number, inner: THREE.Vector2[], z1: nu
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
   return geometry;
+}
+
+// ----------------------------------------------------------------------------
+// Peint la phase d'allumage ou d'extinction sur la dalle 3D, en version simplifiée :
+// c'est ce qu'on voit de loin ; face à l'écran, l'interface HTML prend le relais.
+// ----------------------------------------------------------------------------
+function paintPhase(context: CanvasRenderingContext2D, phase: PcScreen, desktop: HTMLCanvasElement, logo: HTMLImageElement | null, locale: 'fr' | 'en'): void {
+  const w = XP_WIDTH; const h = XP_HEIGHT;
+  if (phase === 'desktop') { context.drawImage(desktop, 0, 0); return; }
+  context.fillStyle = '#000';
+  context.fillRect(0, 0, w, h);
+  if (phase === 'bios') {
+    // Texte gris du POST Award et logo energy jaune en haut à droite.
+    context.fillStyle = '#b8b8b8';
+    context.font = '20px "Lucida Console", "Courier New", monospace';
+    const lines = ['  Award Modular BIOS v4.51PG, An Energy Star Ally', '  Copyright (C) 1984-98, Award Software, Inc.', '', 'W6168MS V1.3 111700', '',
+      'PENTIUM III-MMX CPU at 500 MHz          , Host Bus 100MHz', 'Memory Test :  393216K OK', '', 'Award Plug and Play BIOS Extension v1.0A',
+      'Copyright (C) 1998, Award Software, Inc.', '  Detecting IDE Primary Master  ... 86B_CD00'];
+    lines.forEach((line, i) => context.fillText(line, 26, 40 + i * 28));
+    context.fillText('Press DEL to enter SETUP', 26, h - 48);
+    context.strokeStyle = '#e6e300';
+    context.lineWidth = 2;
+    context.font = 'italic 44px "Brush Script MT", cursive';
+    context.strokeText('energy', w - 240, 76);
+    return;
+  }
+  if (phase === 'boot') {
+    // Logo Windows XP centré et sa barre aux blocs bleus.
+    if (logo !== null) context.drawImage(logo, w / 2 - 150, 270, 92, 74);
+    context.fillStyle = '#fff';
+    context.font = 'bold 58px "Franklin Gothic Medium", "Trebuchet MS", sans-serif';
+    context.fillText('Windows', w / 2 - 50, 340);
+    context.fillStyle = '#f37a20';
+    context.font = 'italic bold 30px "Trebuchet MS", sans-serif';
+    context.fillText('xp', w / 2 + 180, 300);
+    context.strokeStyle = '#b2b2b2';
+    context.lineWidth = 2;
+    context.strokeRect(w / 2 - 78, 420, 156, 18);
+    context.fillStyle = '#3b5bff';
+    for (let k = 0; k < 3; k += 1) context.fillRect(w / 2 - 50 + k * 12, 424, 9, 10);
+    return;
+  }
+  if (phase === 'welcome' || phase === 'shutdown') {
+    // Écran bleu à bandeaux, liseré orange en haut.
+    context.fillStyle = '#5a7edc';
+    context.fillRect(0, 0, w, h);
+    context.fillStyle = '#00309c';
+    context.fillRect(0, 0, w, 92);
+    context.fillRect(0, h - 108, w, 108);
+    context.fillStyle = '#f7b03c';
+    context.fillRect(w * 0.2, 92, w * 0.6, 2);
+    context.fillStyle = '#fff';
+    if (phase === 'welcome') {
+      context.font = 'italic bold 72px "Franklin Gothic Medium", "Trebuchet MS", sans-serif';
+      context.fillText(locale === 'fr' ? 'bienvenue' : 'welcome', 520, h / 2 + 24);
+    } else {
+      context.font = '24px "Trebuchet MS", sans-serif';
+      context.fillText(locale === 'fr' ? 'Windows s’arrête…' : 'Windows is shutting down…', 120, h / 2 + 40);
+    }
+  }
 }

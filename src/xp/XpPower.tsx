@@ -28,16 +28,19 @@ const IDE: readonly [string, string, number][] = [
 // processeur, test mémoire qui compte, détection IDE avec attentes, erreurs disquette
 // et CMOS), bip du haut-parleur, curseur clignotant, et arrêt sur « Press F1 to
 // continue » : onReady est appelé à ce moment, la page attend alors F1 ou un clic.
+// startedAt est le début de la phase (performance.now()) : revenir à l'écran ne relance pas le POST.
 // ----------------------------------------------------------------------------
-export function AwardBios({ onReady }: { onReady?: () => void }) {
-  const [startedAt] = useState(() => performance.now());
+export function AwardBios({ startedAt, onReady }: { startedAt: number; onReady?: () => void }) {
   const elapsed = useElapsed(startedAt);
   const t = elapsed - VGA_MS;
-  // Bip court du haut-parleur quand le POST de la carte mère commence.
+  // Bip court du haut-parleur quand le POST de la carte mère commence ; s'il a déjà eu lieu
+  // pendant qu'on regardait ailleurs, il ne se rejoue pas en revenant.
   useEffect(() => {
-    const timer = window.setTimeout(beep, VGA_MS + 150);
+    const delay = startedAt + VGA_MS + 150 - performance.now();
+    if (delay < 0) return;
+    const timer = window.setTimeout(beep, delay);
     return () => window.clearTimeout(timer);
-  }, []);
+  }, [startedAt]);
 
   // Calendrier du POST, en millisecondes après la fin de l'écran vidéo.
   const memStart = 1000;

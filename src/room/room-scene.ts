@@ -26,7 +26,7 @@ import { depthAwareBlend } from 'three/addons/tsl/display/depthAwareBlend.js';
 import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
-import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower } from './pc-model.ts';
+import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
@@ -64,6 +64,7 @@ export type RoomScene = {
   // Rectangle de la dalle du CRT dans le canvas, en pixels CSS, une fois la caméra arrivée.
   screenRect(): { left: number; top: number; width: number; height: number } | null;
   setPower(state: PcPower): void;
+  setScreen(phase: PcScreen): void;
   resize(): void;
   setRunning(running: boolean): void;
   dispose(): void;
@@ -573,6 +574,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
     },
     setPower(state) { pc.setPower(state); wake(); },
+    setScreen(phase) { pc.setScreen(phase); wake(); },
     resize,
     setRunning(next) {
       if (next === running) return;
