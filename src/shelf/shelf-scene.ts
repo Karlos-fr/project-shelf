@@ -137,7 +137,7 @@ export async function createShelfScene(options: ShelfSceneOptions): Promise<Shel
   keep(walnut.diff); keep(walnut.nor); keep(walnut.arm);
 
   // --------------------------------------------------------------- meuble et objets
-  const model = await buildShelfModel({ keep, assetBase, lite, maxAniso, walnut, dustTex, smudgeTex }, items);
+  const model = await buildShelfModel({ keep, assetBase, lite, maxAniso, wood: walnut, dustTex, smudgeTex }, items);
   scene.add(model.group);
   const { placed, slots } = model;
   // Mur peint au relief de plâtre, qui reçoit l'ombre du meuble.

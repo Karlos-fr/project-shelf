@@ -25,7 +25,7 @@ On propose une troisième version du site, à côté de la vitrine (`/{langue}/`
 ## 3. La pièce (3D)
 
 ### Mobilier
-- **Bureau en pin.** Bois clair et blond, nœuds visibles, vernis légèrement jauni par le temps.
+- **Bureau en hêtre clair** (d'abord prévu en pin, éclairci à la demande de l'auteur : les meubles de l'époque étaient clairs). L'étagère de la chambre passe aussi en hêtre ; l'étagère seule reste en noyer.
 - **Chaise paysanne en hêtre** (bois plus fin et régulier que le pin), **assise paillée**.
 - **L'étagère en noyer** existante, déplacée contre un mur.
 - Murs, sol et plafond sobres : le décor doit mettre en valeur les objets, pas rivaliser avec eux.

@@ -43,6 +43,7 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
   const sceneRef = useRef<RoomScene | null>(null);
   const keyRef = useRef<((event: globalThis.KeyboardEvent) => void) | null>(null);
   const [sceneState, setSceneState] = useState<SceneState>('loading');
+  const [progress, setProgress] = useState(0);
   const [view, setView] = useState<RoomView>('overview');
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
@@ -62,6 +63,7 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
     void import('../room/room-scene.ts')
       .then(({ createRoomScene }) => createRoomScene({
         canvas, reducedMotion,
+        onProgress: (fraction) => { if (!disposed) setProgress(Math.round(fraction * 100)); },
         roomBase: `${root}room/`,
         shelfBase: `${root}shelf/`,
         items: items.map(({ project, object }) => {
@@ -173,7 +175,16 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
         <div className="room__stage" data-state={sceneState}>
           <canvas ref={canvasRef} className="room__canvas" aria-hidden="true"
             onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave} onClick={handleClick} />
-          {sceneState === 'loading' && <span className="room__loading">{messages.roomLoading}</span>}
+          {sceneState === 'loading' && (
+            <div className="room__loading">
+              <span>{messages.roomLoading}</span>
+              <div className="room__progress" role="progressbar" aria-label={messages.roomLoading}
+                aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}>
+                <span style={{ width: `${progress}%` }} />
+              </div>
+              <span className="room__percent">{progress} %</span>
+            </div>
+          )}
           {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{labels[hover.zone]}</span>}
           {sceneState === 'ready' && (
             <div className="room__hud">

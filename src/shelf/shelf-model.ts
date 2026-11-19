@@ -12,7 +12,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { layoutShelf, type ShelfBox, type ShelfObject } from './shelf-items.ts';
 import {
   bullnose, composeBack, cornice, loadImage, plaqueTextures, printNormal, release, shrink, spineCanvas, woodNodeMaterial, worn,
-  type PbrSet,
+  type PbrSet, type WoodOptions,
 } from './shelf-materials.ts';
 
 // Objet tel que la scène le reçoit : textes déjà localisés, médias déjà résolus.
@@ -34,9 +34,13 @@ export type ShelfEnv = {
   // Préréglage léger : jaquettes réduites, pas de relief de vernis.
   lite: boolean;
   maxAniso: number;
-  walnut: PbrSet;
+  // Essence du meuble et réglages de teinte (noyer verni par défaut).
+  wood: PbrSet;
+  woodLook?: Pick<WoodOptions, 'tint' | 'brightness' | 'normalScale' | 'coat'>;
   dustTex: THREE.Texture;
   smudgeTex: THREE.Texture;
+  // Appelé après chaque objet construit, pour une barre de chargement.
+  onItem?: () => void;
 };
 
 // Dimensions du meuble en mètres : profondeur, hauteur d'un casier, épaisseur.
@@ -81,11 +85,11 @@ export type ShelfModel = {
 // Effets de bord : crée des éléments vidéo hors DOM pour les écrans.
 // ----------------------------------------------------------------------------
 export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneItem[], width = 2.0): Promise<ShelfModel> {
-  const { keep, assetBase, lite, maxAniso, walnut, dustTex, smudgeTex } = env;
+  const { keep, assetBase, lite, maxAniso, wood: woodSet, woodLook, dustTex, smudgeTex } = env;
   const W = width;
   const group = new THREE.Group();
   const wood = (ru: number, rv: number, rotate = false, coat = 0.3, ox = 0, oy = 0) =>
-    keep(woodNodeMaterial(walnut, dustTex, { ru, rv, rotate, coat, ox, oy }));
+    keep(woodNodeMaterial(woodSet, dustTex, { ru, rv, rotate, coat, ox, oy, ...woodLook, ...(woodLook?.coat === undefined ? {} : { coat: Math.min(coat, woodLook.coat) }) }));
 
   // --------------------------------------------------------------- meuble
   const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
@@ -152,6 +156,7 @@ export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneI
     group.add(root);
     const { plaque, material } = makePlaque(item, index, slots[index] ?? 0);
     placed.push({ root, rest: { x: slots[index] ?? 0, z: restZ, ry: restRy }, isTV, tv, plaque, plaqueMaterial: material });
+    env.onItem?.();
   }
 
   // --------------------------------------------------------------- fabrication

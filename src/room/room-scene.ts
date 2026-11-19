@@ -43,6 +43,8 @@ export type RoomSceneOptions = {
   shelfBase: string;
   reducedMotion: boolean;
   forceWebGL?: boolean;
+  // Avancement du chargement, de 0 à 1 : textures, boîtes puis premier rendu.
+  onProgress?: (fraction: number) => void;
 };
 
 export type RoomScene = {
@@ -67,7 +69,9 @@ const RH = 2.5;
 const WALL = 0.15;
 // Fenêtre du mur du fond.
 const WIN = { x: 1.05, w: 0.95, y0: 0.95, y1: 2.2 };
-// Bureau en pin contre le mur du fond.
+// Teinte du hêtre clair (placage de frêne Poly Haven réchauffé), commune aux trois meubles.
+const BEECH = { tint: 0xf7dcc0, brightness: 1.25, normalScale: 0.9 } as const;
+// Bureau en hêtre contre le mur du fond.
 const DESK = { x: -0.15, z: BACK + 0.38, w: 1.4, d: 0.7, h: 0.74 };
 // Étagère accrochée au mur de gauche : centre de la tablette du milieu.
 const SHELF = { x: -RX + SHELF_DEPTH / 2 + 0.015, y: 1.32, z: -0.3, width: 1.2 };
@@ -87,6 +91,11 @@ const VIEWS: Record<RoomView, Pose> = {
 // ----------------------------------------------------------------------------
 export async function createRoomScene(options: RoomSceneOptions): Promise<RoomScene> {
   const { canvas, items, roomBase, shelfBase, reducedMotion } = options;
+  // Poids de chaque étape : HDRI, trois jeux de textures, trois images par boîte, premier rendu.
+  const expected = 1 + 3 * 3 + items.length * 3 + 4;
+  let done = 0;
+  const report = (weight: number) => { done += weight; options.onProgress?.(Math.min(1, done / expected)); };
+  const tick = <V>(weight: number) => (value: V): V => { report(weight); return value; };
   const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, forceWebGL: options.forceWebGL === true });
   await renderer.init();
   const backend: 'webgpu' | 'webgl' = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true ? 'webgpu' : 'webgl';
@@ -107,16 +116,14 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   await document.fonts.load('900 64px "Mona Sans Variable"').catch(() => undefined);
 
   // --------------------------------------------------------------- textures
-  const [hdr, walnut, pine, beech, oak, plaster] = await Promise.all([
-    new HDRLoader().loadAsync(`${shelfBase}room.hdr`),
-    loadPbrSet(loader, shelfBase, 'wood', maxAniso),
-    loadPbrSet(loader, roomBase, 'pine', maxAniso),
-    loadPbrSet(loader, roomBase, 'beech', maxAniso),
-    loadPbrSet(loader, roomBase, 'floor', maxAniso),
-    loadPbrSet(loader, roomBase, 'wall', maxAniso),
+  const [hdr, beech, oak, plaster] = await Promise.all([
+    new HDRLoader().loadAsync(`${shelfBase}room.hdr`).then(tick(1)),
+    loadPbrSet(loader, roomBase, 'beech', maxAniso).then(tick(3)),
+    loadPbrSet(loader, roomBase, 'floor', maxAniso).then(tick(3)),
+    loadPbrSet(loader, roomBase, 'wall', maxAniso).then(tick(3)),
   ]);
   keep(hdr);
-  for (const set of [walnut, pine, beech, oak, plaster]) { keep(set.diff); keep(set.nor); keep(set.arm); }
+  for (const set of [beech, oak, plaster]) { keep(set.diff); keep(set.nor); keep(set.arm); }
   const dustTex = keep(blotchTexture(1024, 17, 140, 9000));
   const smudgeTex = keep(blotchTexture(512, 29, 60, 0));
   const pbr = (set: PbrSet, opts: WoodOptions) => keep(woodNodeMaterial(set, dustTex, opts));
@@ -217,51 +224,34 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const outsideMaterial = keep(new THREE.MeshBasicNodeMaterial());
   outsideMaterial.colorNode = texture(outside, uv()).rgb.mul(1.9);
   add(room, new THREE.PlaneGeometry(9, 4.5), outsideMaterial, WIN.x + 0.6, 1.4, BACK - 3.2, false);
-  // Rideaux ocre à plis, tirés de chaque côté.
-  const curtainMaterial = keep(new THREE.MeshPhysicalMaterial({
-    color: 0xb8742a, roughness: 0.82, sheen: 1, sheenColor: new THREE.Color(0xffc27a), sheenRoughness: 0.6, side: THREE.DoubleSide,
-  }));
-  for (const side of [-1, 1]) {
-    const geometry = new THREE.PlaneGeometry(0.42, RH - 0.2, 64, 1);
-    const position = geometry.attributes.position as THREE.BufferAttribute;
-    for (let i = 0; i < position.count; i += 1) {
-      const x = position.getX(i);
-      position.setZ(i, Math.sin((x + 0.21) * 42) * 0.022 + Math.sin((x + 0.21) * 13) * 0.01);
-    }
-    geometry.computeVertexNormals();
-    add(room, geometry, curtainMaterial, WIN.x + side * (WIN.w / 2 + 0.09), (RH - 0.2) / 2 + 0.02, BACK + 0.07);
-  }
   const brass = keep(new THREE.MeshStandardMaterial({ color: 0xb08a3c, metalness: 1, roughness: 0.3 }));
-  const rod = add(room, new THREE.CylinderGeometry(0.012, 0.012, WIN.w + 0.62, 24), brass, WIN.x, RH - 0.14, BACK + 0.08);
-  rod.rotation.z = Math.PI / 2;
-  for (const side of [-1, 1]) add(room, new THREE.SphereGeometry(0.022, 24, 16), brass, WIN.x + side * (WIN.w / 2 + 0.31), RH - 0.14, BACK + 0.08);
 
-  // --------------------------------------------------------------- bureau en pin
-  // Pin verni, éclairci et jauni : un meuble blond des années 90.
-  const pineWood = (ru: number, rv: number, rotate = false, ox = 0) =>
-    pbr(pine, { ru, rv, rotate, ox, oy: ox * 0.7, coat: 0.55, coatRoughness: 0.18, tint: 0xfff0d6, brightness: 2.0, dust: 0.12, normalScale: 1.2 });
+  // --------------------------------------------------------------- bureau en hêtre
+  // Hêtre clair verni, comme la chaise et l'étagère : des meubles blonds des années 90.
+  const deskWood = (ru: number, rv: number, rotate = false, ox = 0) =>
+    pbr(beech, { ru, rv, rotate, ox, oy: ox * 0.7, ...BEECH, coat: 0.45, coatRoughness: 0.22, dust: 0.1 });
   const desk = new THREE.Group();
   desk.position.set(DESK.x, 0, DESK.z);
   desk.userData.zone = 'desk';
   scene.add(desk);
   const { w: dw, d: dd, h: dh } = DESK;
-  add(desk, new RoundedBoxGeometry(dw, 0.03, dd, 3, 0.006), pineWood(dw / 0.74, dd / 0.74), 0, dh - 0.015, 0);
+  add(desk, new RoundedBoxGeometry(dw, 0.03, dd, 3, 0.006), deskWood(dw, dd), 0, dh - 0.015, 0);
   // Caisson à trois tiroirs à gauche, flanc plein à droite, voile de fond.
   const cw = 0.42;
   const cx = -dw / 2 + cw / 2 + 0.02;
   const carcass = dh - 0.03;
-  for (const sx of [cx - cw / 2 + 0.01, cx + cw / 2 - 0.01]) add(desk, new RoundedBoxGeometry(0.02, carcass, dd - 0.04, 2, 0.003), pineWood(0.9, 0.4, true, sx), sx, carcass / 2, -0.01);
-  add(desk, new RoundedBoxGeometry(0.03, carcass, dd - 0.04, 2, 0.004), pineWood(0.9, 0.4, true, 0.3), dw / 2 - 0.04, carcass / 2, -0.01);
+  for (const sx of [cx - cw / 2 + 0.01, cx + cw / 2 - 0.01]) add(desk, new RoundedBoxGeometry(0.02, carcass, dd - 0.04, 2, 0.003), deskWood(0.9, 0.4, true, sx), sx, carcass / 2, -0.01);
+  add(desk, new RoundedBoxGeometry(0.03, carcass, dd - 0.04, 2, 0.004), deskWood(0.9, 0.4, true, 0.3), dw / 2 - 0.04, carcass / 2, -0.01);
   const spanL = cx + cw / 2;
   const spanR = dw / 2 - 0.055;
-  add(desk, new RoundedBoxGeometry(spanR - spanL, 0.34, 0.015, 2, 0.003), pineWood(1.2, 0.5, false, 0.6), (spanL + spanR) / 2, dh - 0.03 - 0.17, -dd / 2 + 0.03);
-  add(desk, new RoundedBoxGeometry(spanR - spanL, 0.06, 0.02, 2, 0.003), pineWood(1.3, 0.1, false, 0.2), (spanL + spanR) / 2, dh - 0.06, dd / 2 - 0.04);
-  add(desk, new RoundedBoxGeometry(cw, 0.06, dd - 0.04, 2, 0.003), pineWood(0.6, 0.3, false, 0.9), cx, 0.03, -0.01);
-  const knobMaterial = pineWood(0.2, 0.2, true, 0.4);
+  add(desk, new RoundedBoxGeometry(spanR - spanL, 0.34, 0.015, 2, 0.003), deskWood(1.2, 0.5, false, 0.6), (spanL + spanR) / 2, dh - 0.03 - 0.17, -dd / 2 + 0.03);
+  add(desk, new RoundedBoxGeometry(spanR - spanL, 0.06, 0.02, 2, 0.003), deskWood(1.3, 0.1, false, 0.2), (spanL + spanR) / 2, dh - 0.06, dd / 2 - 0.04);
+  add(desk, new RoundedBoxGeometry(cw, 0.06, dd - 0.04, 2, 0.003), deskWood(0.6, 0.3, false, 0.9), cx, 0.03, -0.01);
+  const knobMaterial = deskWood(0.2, 0.2, true, 0.4);
   const drawerH = (carcass - 0.08) / 3;
   for (let k = 0; k < 3; k += 1) {
     const y = 0.07 + drawerH * (k + 0.5);
-    add(desk, new RoundedBoxGeometry(cw - 0.03, drawerH - 0.012, 0.022, 3, 0.005), pineWood(0.6, 0.3, false, k * 0.31), cx, y, dd / 2 - 0.03);
+    add(desk, new RoundedBoxGeometry(cw - 0.03, drawerH - 0.012, 0.022, 3, 0.005), deskWood(0.6, 0.3, false, k * 0.31), cx, y, dd / 2 - 0.03);
     const knob = add(desk, new THREE.LatheGeometry(knobProfile(), 24), knobMaterial, cx, y, dd / 2 - 0.019);
     knob.rotation.x = Math.PI / 2;
   }
@@ -275,7 +265,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   buildChair(chair);
 
   // --------------------------------------------------------------- étagère
-  const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, walnut, dustTex, smudgeTex }, items, SHELF.width);
+  const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, woodLook: { ...BEECH, coat: 0.3 }, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width);
   model.group.position.set(SHELF.x, SHELF.y, SHELF.z);
   model.group.rotation.y = Math.PI / 2;
   model.group.userData.zone = 'shelf';
@@ -423,13 +413,16 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   }
 
   resize();
+  // Le premier rendu compile tous les shaders : c'est la dernière étape de la barre.
+  pipeline.render();
+  report(4);
   wake(5000);
   renderer.setAnimationLoop(frame);
 
   // --------------------------------------------------------------- fabrication
   function buildChair(parent: THREE.Group): void {
     // Hêtre clair et ciré ; les pièces tournées suivent le fil du bois.
-    const beechWood = (seed: number) => pbr(beech, { ru: 0.5, rv: 0.12, rotate: true, ox: seed * 0.23, oy: seed * 0.17, coat: 0.25, coatRoughness: 0.35, tint: 0xf6c9a0, brightness: 1.15, dust: 0.05, normalScale: 0.9 });
+    const beechWood = (seed: number) => pbr(beech, { ru: 0.5, rv: 0.12, rotate: true, ox: seed * 0.23, oy: seed * 0.17, coat: 0.25, coatRoughness: 0.35, ...BEECH, dust: 0.05 });
     const seatY = 0.45;
     // Pieds avant tournés.
     for (const side of [-1, 1]) {
