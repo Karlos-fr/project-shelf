@@ -54,59 +54,95 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
     parent.add(mesh);
     return mesh;
   };
-  // Plastique ABS beige, un peu jauni par le soleil, aux reflets ternes.
-  const plastic = keep(new THREE.MeshPhysicalNodeMaterial({ color: 0xd9cfb3, roughness: 0.55, clearcoat: 0.12, clearcoatRoughness: 0.5 }));
-  plastic.roughnessNode = float(0.5).add(texture(smudgeTex, uv().mul(2)).r.mul(0.15));
-  const plasticDark = keep(new THREE.MeshPhysicalMaterial({ color: 0xbdb398, roughness: 0.6 }));
+  // Plastique ABS beige grainé, un peu jauni par le soleil : mat, sans vernis.
+  const plastic = keep(new THREE.MeshPhysicalNodeMaterial({ color: 0xc9bfa3, roughness: 0.72, specularIntensity: 0.6 }));
+  plastic.roughnessNode = float(0.66).add(texture(smudgeTex, uv().mul(2)).r.mul(0.14));
+  const plasticDark = keep(new THREE.MeshPhysicalMaterial({ color: 0xb2a88c, roughness: 0.74, specularIntensity: 0.6, side: THREE.DoubleSide }));
   const black = keep(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.7 }));
   const grey = keep(new THREE.MeshStandardMaterial({ color: 0x3a3a3a, roughness: 0.5 }));
 
   // --------------------------------------------------------------- moniteur CRT 17 pouces
-  // Modèle d'époque : façade beige à ouverture arrondie, menton portant la marque et les
-  // réglages, coque arrière profonde qui loge le tube, ouïes d'aération et pied orientable.
+  // Modèle d'époque au cadre fin : façade étroite, rebord intérieur en pente qui descend
+  // vers la dalle, menton mince portant la marque et les réglages, coque arrière profonde
+  // qui loge le tube, ouïes d'aération et pied orientable.
   const monitor = new THREE.Group();
   monitor.position.set(0.05, 0, -0.1);
   monitor.userData.zone = 'screen';
   group.add(monitor);
   const front = 0.2;
-  const bodyY = 0.045 + 0.2;
-  const screenY = bodyY + 0.02;
+  // Largeurs du cadre autour de la dalle : rebord en pente, puis façade (côtés, haut, menton).
+  const lip = 0.009;
+  const side = 0.016;
+  const topBand = 0.018;
+  const chin = 0.042;
+  const bezelW = SCREEN_W + 2 * (lip + side);
+  const bezelH = SCREEN_H + 2 * lip + topBand + chin;
+  const bezelBottom = 0.052;
+  const bodyY = bezelBottom + bezelH / 2;
+  const screenY = bezelBottom + chin + lip + SCREEN_H / 2;
   // Pied orientable : galette et rotule.
-  add(monitor, new THREE.CylinderGeometry(0.1, 0.118, 0.018, 64), plastic, 0, 0.009, 0.0);
-  add(monitor, new THREE.CylinderGeometry(0.055, 0.075, 0.03, 48), plasticDark, 0, 0.03, 0.0);
-  // Coque arrière : boîte arrondie qui s'affine et descend vers l'arrière.
+  add(monitor, new THREE.CylinderGeometry(0.095, 0.112, 0.016, 64), plastic, 0, 0.008, -0.02);
+  add(monitor, new THREE.CylinderGeometry(0.05, 0.07, 0.036, 48), plasticDark, 0, 0.034, -0.02);
+  // Coque arrière : collier aux dimensions de la façade, puis tube qui s'affine et descend.
+  // Elle est construite en anneaux successifs : le dessus suit exactement la courbe, et
+  // les ouïes d'aération y sont posées à la bonne hauteur.
   const housingDepth = 0.4;
+  const housingW = bezelW - 0.006;
+  const housingH = bezelH - 0.006;
   const taper = (zRel: number) => {
-    const t = Math.min(1, Math.max(0, (zRel - 0.07) / 0.33));
-    return { scale: 1 - 0.36 * t ** 1.2, drop: 0.03 * t };
+    const t = Math.min(1, Math.max(0, (zRel - 0.06) / 0.34));
+    return { scale: 1 - 0.4 * t ** 1.3, drop: 0.022 * t };
   };
-  const housing = new RoundedBoxGeometry(0.392, 0.382, housingDepth, 6, 0.035);
-  const hp = housing.attributes.position as THREE.BufferAttribute;
-  for (let i = 0; i < hp.count; i += 1) {
-    const { scale, drop } = taper(housingDepth / 2 - hp.getZ(i));
-    hp.setXYZ(i, hp.getX(i) * scale, hp.getY(i) * scale - drop, hp.getZ(i));
-  }
-  housing.computeVertexNormals();
-  const housingZ = front - 0.046 - housingDepth / 2;
-  add(monitor, housing, plastic, 0, bodyY, housingZ);
-  // Ouïes d'aération sur le dessus, vers l'arrière.
-  for (const zRel of [0.15, 0.19, 0.23]) {
+  const housingFront = front - 0.026;
+  const rings = 24;
+  const ringPoints = 8;
+  const contour = roundedRectPoints(housingW, housingH, 0.03, ringPoints);
+  const positions: number[] = [];
+  const indices: number[] = [];
+  for (let r = 0; r <= rings; r += 1) {
+    const zRel = (r / rings) * housingDepth;
     const { scale, drop } = taper(zRel);
-    const top = bodyY + 0.191 * scale - drop;
-    for (let k = -9; k <= 9; k += 1) {
-      const slot = add(monitor, new THREE.BoxGeometry(0.005, 0.003, 0.03), black, k * 0.012 * scale, top, housingZ + housingDepth / 2 - zRel);
+    for (const point of contour) positions.push(point.x * scale, point.y * scale - drop, -zRel);
+  }
+  const count = contour.length;
+  for (let r = 0; r < rings; r += 1) {
+    for (let i = 0; i < count; i += 1) {
+      const a0 = r * count + i; const a1 = r * count + ((i + 1) % count);
+      const b0 = a0 + count; const b1 = a1 + count;
+      indices.push(a0, b0, a1, a1, b0, b1);
+    }
+  }
+  // Fond de la coque : éventail depuis le centre du dernier anneau.
+  const back = taper(housingDepth);
+  const centre = positions.length / 3;
+  positions.push(0, -back.drop, -housingDepth);
+  for (let i = 0; i < count; i += 1) indices.push(centre, rings * count + ((i + 1) % count), rings * count + i);
+  const housing = new THREE.BufferGeometry();
+  housing.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  housing.setIndex(indices);
+  housing.computeVertexNormals();
+  add(monitor, housing, plasticDark, 0, bodyY, housingFront);
+  // Ouïes d'aération sur le dessus, vers l'arrière.
+  for (const zRel of [0.17, 0.21, 0.25]) {
+    const { scale, drop } = taper(zRel);
+    const top = bodyY + (housingH / 2) * scale - drop;
+    for (let k = -8; k <= 8; k += 1) {
+      const slot = add(monitor, new THREE.BoxGeometry(0.005, 0.002, 0.028), black, k * 0.012 * scale, top, housingFront - zRel);
       slot.castShadow = false;
     }
   }
-  // Façade : cadre arrondi dont l'ouverture épouse la dalle à un millimètre près.
-  const b = 0.006;
-  const bezelShape = roundedRect(0.405 - 2 * b, 0.395 - 2 * b, 0.028 - b, 0, 0);
-  bezelShape.holes.push(roundedRect(SCREEN_W + 0.002, SCREEN_H + 0.002, SCREEN_RADIUS + 0.001, 0, screenY - bodyY));
-  const bezel = new THREE.ExtrudeGeometry(bezelShape, { depth: 0.03, bevelEnabled: true, bevelThickness: 0.008, bevelSize: b, bevelSegments: 4, curveSegments: 16 });
-  add(monitor, bezel, plastic, 0, bodyY, front - 0.038);
-  // Fond noir derrière la dalle : le liseré entre verre et façade reste sombre.
-  const mask = add(monitor, new THREE.ShapeGeometry(roundedRect(SCREEN_W + 0.01, SCREEN_H + 0.01, SCREEN_RADIUS + 0.005, 0, 0), 12), black, 0, screenY, front - 0.03);
-  mask.castShadow = false;
+  // Façade fine, au chant adouci.
+  const b = 0.004;
+  const bezelShape = roundedRect(bezelW - 2 * b, bezelH - 2 * b, 0.018, 0, 0);
+  bezelShape.holes.push(roundedRect(SCREEN_W + 2 * lip, SCREEN_H + 2 * lip, SCREEN_RADIUS + lip, 0, screenY - bodyY));
+  const bezel = new THREE.ExtrudeGeometry(bezelShape, { depth: 0.018, bevelEnabled: true, bevelThickness: 0.004, bevelSize: b, bevelSegments: 4, curveSegments: 16 });
+  add(monitor, bezel, plastic, 0, bodyY, front - 0.022);
+  // Rebord en pente : de l'ouverture de la façade jusqu'au bord de la dalle, 12 mm plus bas.
+  const slope = loft(
+    roundedRectPoints(SCREEN_W + 2 * lip, SCREEN_H + 2 * lip, SCREEN_RADIUS + lip, 12), 0,
+    roundedRectPoints(SCREEN_W + 0.001, SCREEN_H + 0.001, SCREEN_RADIUS, 12), -0.012,
+  );
+  add(monitor, slope, plasticDark, 0, screenY, front - 0.0005).castShadow = false;
   // Dalle bombée aux coins arrondis : le verre avance de 8 mm au centre.
   const glassGeometry = new THREE.PlaneGeometry(SCREEN_W, SCREEN_H, 48, 36);
   const glassPosition = glassGeometry.attributes.position as THREE.BufferAttribute;
@@ -138,22 +174,21 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
     emissive: 0xffffff, emissiveMap: screenTexture, emissiveIntensity: 0.95,
   }));
   glass.roughnessNode = float(0.05).add(texture(smudgeTex, uv().mul(1.1)).r.mul(0.25));
-  const screen = add(monitor, glassGeometry, glass, 0, screenY, front - 0.012);
+  const screen = add(monitor, glassGeometry, glass, 0, screenY, front - 0.0125);
   screen.castShadow = false;
-  // Menton : marque au centre, nom du modèle à gauche, réglages et interrupteur à droite.
-  const chinY = (bodyY - 0.395 / 2 + screenY - SCREEN_H / 2 - 0.006) / 2;
+  // Menton mince : marque au centre, nom du modèle à gauche, réglages et interrupteur à droite.
+  const chinY = bezelBottom + chin / 2;
   const badge = keep(new THREE.CanvasTexture(brandCanvas()));
   badge.colorSpace = THREE.SRGBColorSpace;
   badge.anisotropy = maxAniso;
-  const decal = add(monitor, new THREE.PlaneGeometry(0.36, 0.05), keep(new THREE.MeshStandardMaterial({
-    map: badge, transparent: true, roughness: 0.45, polygonOffset: true, polygonOffsetFactor: -2,
-  })), -0.03, chinY + 0.004, front + 0.0004);
+  const decal = add(monitor, new THREE.PlaneGeometry(0.3, 0.0375), keep(new THREE.MeshStandardMaterial({
+    map: badge, transparent: true, roughness: 0.7, polygonOffset: true, polygonOffsetFactor: -2,
+  })), -0.02, chinY, front + 0.0004);
   decal.castShadow = false;
-  const powerKnob = add(monitor, new THREE.CylinderGeometry(0.0095, 0.0095, 0.007, 32), plasticDark, 0.165, chinY, front + 0.002);
+  const powerKnob = add(monitor, new THREE.CylinderGeometry(0.0075, 0.0075, 0.005, 32), plasticDark, 0.155, chinY, front + 0.0015);
   powerKnob.rotation.x = Math.PI / 2;
-  add(monitor, new THREE.SphereGeometry(0.0026, 12, 8), keep(new THREE.MeshStandardMaterial({ color: 0x1f8f2a, emissive: 0x32ff4a, emissiveIntensity: 2 })), 0.142, chinY, front + 0.0015);
-  add(monitor, new RoundedBoxGeometry(0.072, 0.014, 0.004, 2, 0.002), black, 0.098, chinY - 0.002, front - 0.0005);
-  for (let k = 0; k < 4; k += 1) add(monitor, new RoundedBoxGeometry(0.012, 0.007, 0.005, 2, 0.002), plasticDark, 0.073 + k * 0.017, chinY - 0.002, front + 0.001);
+  add(monitor, new THREE.SphereGeometry(0.0022, 12, 8), keep(new THREE.MeshStandardMaterial({ color: 0x1f8f2a, emissive: 0x32ff4a, emissiveIntensity: 2 })), 0.137, chinY, front + 0.001);
+  for (let k = 0; k < 4; k += 1) add(monitor, new RoundedBoxGeometry(0.01, 0.006, 0.004, 2, 0.0015), plasticDark, 0.082 + k * 0.014, chinY, front + 0.0008);
   // La lumière de l'écran éclaire le clavier et le bureau.
   const spill = new THREE.PointLight(0x9cc4ff, 0.35, 1.2, 2);
   spill.position.set(0, screenY, front + 0.15);
@@ -388,20 +423,55 @@ function roundedRect(width: number, height: number, radius: number, cx: number, 
 
 // ----------------------------------------------------------------------------
 // Sérigraphie du menton : « SAMSUNG » au centre, « SyncMaster 750s » à gauche.
-// Retour : toile transparente au rapport 36 x 5 cm.
+// Retour : toile transparente au rapport du menton (30 x 3,75 cm).
 // ----------------------------------------------------------------------------
 function brandCanvas(): HTMLCanvasElement {
-  const [canvas, context] = canvas2d(1440, 200);
+  const [canvas, context] = canvas2d(1440, 180);
   context.textBaseline = 'middle';
   context.textAlign = 'center';
   context.fillStyle = '#2e3d6b';
-  context.font = 'bold 74px "Arial Black", Arial, sans-serif';
-  context.letterSpacing = '10px';
-  context.fillText('SAMSUNG', 720, 100);
+  context.font = 'bold 62px "Arial Black", Arial, sans-serif';
+  context.letterSpacing = '9px';
+  context.fillText('SAMSUNG', 720, 92);
   context.letterSpacing = '0px';
   context.textAlign = 'left';
   context.fillStyle = '#5f5a4e';
-  context.font = 'italic bold 38px Arial, sans-serif';
-  context.fillText('SyncMaster 750s', 60, 104);
+  context.font = 'italic bold 30px Arial, sans-serif';
+  context.fillText('SyncMaster 750s', 40, 94);
   return canvas;
+}
+
+// Contour d'un rectangle arrondi centré, en points 2D : quatre arcs de n segments,
+// toujours parcourus dans le même ordre pour pouvoir relier deux contours entre eux.
+function roundedRectPoints(width: number, height: number, radius: number, n: number): THREE.Vector2[] {
+  const points: THREE.Vector2[] = [];
+  const corners: [number, number, number][] = [
+    [width / 2 - radius, -height / 2 + radius, -Math.PI / 2],
+    [width / 2 - radius, height / 2 - radius, 0],
+    [-width / 2 + radius, height / 2 - radius, Math.PI / 2],
+    [-width / 2 + radius, -height / 2 + radius, Math.PI],
+  ];
+  for (const [cx, cy, start] of corners) {
+    for (let k = 0; k <= n; k += 1) {
+      const angle = start + (k / n) * (Math.PI / 2);
+      points.push(new THREE.Vector2(cx + Math.cos(angle) * radius, cy + Math.sin(angle) * radius));
+    }
+  }
+  return points;
+}
+
+// Surface réglée entre deux contours de même nombre de points, aux profondeurs z0 et z1.
+function loft(outer: THREE.Vector2[], z0: number, inner: THREE.Vector2[], z1: number): THREE.BufferGeometry {
+  const positions: number[] = [];
+  for (let i = 0; i < outer.length; i += 1) {
+    const j = (i + 1) % outer.length;
+    const o0 = outer[i]; const o1 = outer[j]; const i0 = inner[i]; const i1 = inner[j];
+    if (o0 === undefined || o1 === undefined || i0 === undefined || i1 === undefined) continue;
+    positions.push(o0.x, o0.y, z0, i0.x, i0.y, z1, o1.x, o1.y, z0);
+    positions.push(o1.x, o1.y, z0, i0.x, i0.y, z1, i1.x, i1.y, z1);
+  }
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geometry.computeVertexNormals();
+  return geometry;
 }
