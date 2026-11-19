@@ -32,7 +32,6 @@ export type RoomPageProps = {
 
 type SceneState = 'loading' | 'ready' | 'failed';
 const CRASH_FLAG = 'project-shelf:room-loading';
-const VIEW_ORDER: readonly RoomView[] = ['overview', 'desk', 'screen', 'shelf', 'poster'];
 // Le bouton d'alimentation mène au bureau tant que l'allumage n'existe pas.
 const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone);
 type ScreenRect = { left: number; top: number; width: number; height: number };
@@ -48,7 +47,8 @@ const BOOTING: readonly PcState[] = ['warmup', 'bios', 'boot', 'welcome'];
 const powerOf = (state: PcState): PcPower => (state === 'on' ? 'on' : state === 'off' || state === 'collapse' ? 'off' : 'busy');
 
 // ----------------------------------------------------------------------------
-// Rend l'en-tête, la scène plein cadre avec ses commandes, puis l'index des projets.
+// Rend la scène plein cadre, sans commande : on clique dans la pièce pour s'y déplacer.
+// Le titre et l'index des projets restent dans le HTML, masqués visuellement.
 // ----------------------------------------------------------------------------
 export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: RoomPageProps) {
   const messages = MESSAGES[locale];
@@ -66,10 +66,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [view, setView] = useState<RoomView>('overview');
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
-  const [hover, setHover] = useState<{ zone: RoomZone; x: number; y: number } | null>(null);
   const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
   const [pc, setPc] = useState<PcState>('on');
-  const labels: Record<RoomView, string> = { overview: messages.roomOverview, desk: messages.roomDesk, screen: messages.roomScreen, shelf: messages.roomShelf, poster: messages.roomPoster };
 
   // Charge la scène dès l'hydratation : la chambre est tout le contenu de la page.
   useEffect(() => {
@@ -161,7 +159,6 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     setView(next);
     setZoomed(-1);
     setActive(-1);
-    setHover(null);
   }
   // Bouton de la tour ou menu Démarrer : la caméra se place face à l'écran pour voir la séquence.
   function togglePower(): void {
@@ -194,12 +191,10 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     const onItem = view === 'shelf' && hit.index >= 0;
     const toZone = hit.zone !== null && (hit.zone === 'power' || zoneView(hit.zone) !== view) && !onItem ? hit.zone : null;
     event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : 'default';
-    setHover(toZone === null ? null : { zone: toZone, x: event.clientX - rect.left, y: event.clientY - rect.top });
     if (onItem && zoomed < 0) setActive(hit.index);
   }
   function handlePointerLeave(): void {
     sceneRef.current?.setPointer(0, 0);
-    setHover(null);
     if (zoomed < 0) setActive(-1);
   }
   function handleClick(event: MouseEvent<HTMLCanvasElement>): void {
@@ -209,7 +204,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (hit.zone === 'power') { togglePower(); return; }
     if (view === 'shelf' && hit.index >= 0) { zoomTo(hit.index === zoomed ? -1 : hit.index); return; }
     if (hit.zone !== null && zoneView(hit.zone) !== view) { goTo(zoneView(hit.zone)); return; }
+    // Sans bouton ni étiquette, un clic à côté ramène en arrière : boîte, puis vue, puis vue d'ensemble.
     if (zoomed >= 0) zoomTo(-1);
+    else if (view === 'screen' || hit.zone === null) back();
   }
   function handleKeyDown(event: globalThis.KeyboardEvent): void {
     // Une touche pendant l'allumage passe directement au bureau.
@@ -224,8 +221,6 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   // Le canvas ne prend pas le focus : les touches sont écoutées sur toute la fenêtre.
   keyRef.current = handleKeyDown;
 
-  const current = view === 'shelf' ? items[active] : undefined;
-  const hint = view === 'shelf' ? messages.roomHintShelf : messages.roomHint;
   const xp = XP_LABELS[locale];
   return (
     <main className="room-page" data-state={sceneState}>
@@ -244,7 +239,6 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             <span className="room__percent">{progress} %</span>
           </div>
         )}
-        {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{hover.zone === 'power' ? messages.roomPower : labels[zoneView(hover.zone)]}</span>}
         {view === 'screen' && screenRect !== null && pc !== 'off' && (
           <div className={`room__screen is-${pc}`} style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}
             onClick={() => { if (BOOTING.includes(pc)) setPc('on'); }}>
@@ -254,27 +248,6 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             {pc === 'bios' && <AwardBios />}
             {pc === 'boot' && <XpBoot logo={xpAsset(base, 'logo')} />}
             {pc === 'welcome' && <XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="welcome" />}
-          </div>
-        )}
-        {view === 'screen' && pc === 'off' && sceneState === 'ready' && <p className="room__power-hint">{messages.roomPowerOff}</p>}
-        {view === 'screen' && sceneState === 'ready' && <button type="button" className="room__exit" onClick={() => goTo('desk')}>{xp.exit}</button>}
-        {sceneState === 'ready' && view !== 'screen' && (
-          <div className="room__hud">
-            <nav className="room__views" aria-label={messages.roomViews}>
-              {VIEW_ORDER.map((name) => (
-                <button key={name} type="button" aria-pressed={view === name} onClick={() => goTo(name)}>{labels[name]}</button>
-              ))}
-            </nav>
-            {view === 'shelf' && (
-              <div className={`room__caption${current === undefined ? ' is-empty' : ''}`} aria-live="polite">
-                <strong>{current === undefined ? messages.roomIdle : current.project.name}</strong>
-                {current !== undefined && <span>{current.project.tagline[locale]}</span>}
-                {current !== undefined && (
-                  <a href={formatRoute({ ...route, projectId: current.project.id }, base)}>{messages.shelfOpen}</a>
-                )}
-              </div>
-            )}
-            <p className="room__hint">{hint}</p>
           </div>
         )}
       </div>
