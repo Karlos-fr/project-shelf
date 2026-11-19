@@ -1,6 +1,6 @@
 # La chambre — plan
 
-> Date : 19 novembre 2026. Statut : **étapes 1 à 3 faites** (pièce, mobilier, étagère, navigation ; PC et bureau XP ; fenêtres), étapes 4 et 5 à venir.
+> Date : 19 novembre 2026. Statut : **étapes 1 à 4 faites** (pièce, mobilier, étagère, navigation ; PC et bureau XP ; fenêtres ; allumage et extinction), étape 5 à venir.
 > Cible : **desktop uniquement**. L'iPhone et le mobile sont mis de côté pour cette version.
 
 ## 1. Idée
@@ -129,7 +129,7 @@ Ce choix garde un texte net, des interactions natives (clavier, focus, accessibi
 3. **Les fenêtres.** ✅ Fait le 19 novembre 2026 (src/xp/XpWindow.tsx, src/xp/XpPrograms.tsx, src/xp/xp-apps.ts). Démo en ligne → Internet Explorer ; sinon vidéo → Lecteur Windows Media ; Explorateur pour le Poste de travail, Mes documents (un dossier par catégorie) et la Corbeille.
    - Gestionnaire de fenêtres.
    - Lecteur vidéo, navigateur (iframe), explorateur de fichiers.
-4. **Allumage et extinction.**
+4. **Allumage et extinction.** ✅ Fait le 19 novembre 2026 (src/xp/XpPower.tsx, séquenceur dans src/components/RoomPage.tsx). BIOS Award 4.51PG (440BX, Pentium III 500 MHz, 128 Mo) ; bouton de la tour ou menu Démarrer ; un clic ou une touche passe la séquence.
    - Bouton en façade, extinction du CRT.
    - POST du BIOS, démarrage de XP, écran d'accueil.
 5. **L'habillage.**
@@ -152,4 +152,3 @@ Ce choix garde un texte net, des interactions natives (clavier, focus, accessibi
 - Pour chaque projet : raccourci vidéo ou lancement direct, et son icône.
 - Quels projets acceptent d'être affichés dans une iframe.
 - L'emplacement et la technologie du portage du Démineur.
-- Le BIOS à imiter (Award, AMI, Phoenix).

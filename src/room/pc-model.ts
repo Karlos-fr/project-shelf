@@ -25,6 +25,8 @@ export type PcEnv = {
   asset: (name: keyof typeof XP_FILES) => string;
 };
 
+export type PcPower = 'on' | 'off' | 'busy';
+
 export type PcModel = {
   group: THREE.Group;
   monitor: THREE.Group;
@@ -33,6 +35,10 @@ export type PcModel = {
   screenCorners(): THREE.Vector3[];
   screenCenter(): THREE.Vector3;
   screenNormal(): THREE.Vector3;
+  // Allumé, éteint (voyant d'écran orange de veille, dalle noire) ou occupé (disque dur qui clignote).
+  setPower(state: PcPower): void;
+  // Anime le voyant du disque dur ; retour : vrai tant qu'il faut redessiner.
+  update(time: number): boolean;
 };
 
 // Dalle 4:3 visible d'un 17 pouces, en mètres.
@@ -187,7 +193,8 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   decal.castShadow = false;
   const powerKnob = add(monitor, new THREE.CylinderGeometry(0.0075, 0.0075, 0.005, 32), plasticDark, 0.155, chinY, front + 0.0015);
   powerKnob.rotation.x = Math.PI / 2;
-  add(monitor, new THREE.SphereGeometry(0.0022, 12, 8), keep(new THREE.MeshStandardMaterial({ color: 0x1f8f2a, emissive: 0x32ff4a, emissiveIntensity: 2 })), 0.137, chinY, front + 0.001);
+  const monitorLed = keep(new THREE.MeshStandardMaterial({ color: 0x1f8f2a, emissive: 0x32ff4a, emissiveIntensity: 2 }));
+  add(monitor, new THREE.SphereGeometry(0.0022, 12, 8), monitorLed, 0.137, chinY, front + 0.001);
   for (let k = 0; k < 4; k += 1) add(monitor, new RoundedBoxGeometry(0.01, 0.006, 0.004, 2, 0.0015), plasticDark, 0.082 + k * 0.014, chinY, front + 0.0008);
   // La lumière de l'écran éclaire le clavier et le bureau.
   const spill = new THREE.PointLight(0x9cc4ff, 0.35, 1.2, 2);
@@ -215,9 +222,14 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   add(tower, new THREE.BoxGeometry(0.088, 0.0045, 0.003), black, -0.004, 0.258, tf + 0.0135);
   add(tower, new RoundedBoxGeometry(0.012, 0.006, 0.004, 2, 0.0015), plastic, 0.036, 0.249, tf + 0.0135);
   // Voyants alimentation (vert) et disque dur (orange).
-  const led = (hex: number, emissive: number, x: number) => add(tower, new THREE.SphereGeometry(0.0026, 12, 8), keep(new THREE.MeshStandardMaterial({ color: hex, emissive, emissiveIntensity: 2.5 })), x, 0.17, tf + 0.011);
-  led(0x1f8f2a, 0x3cff4c, -0.02);
-  led(0x8a5010, 0xffa020, 0.02);
+  const led = (hex: number, emissive: number, x: number) => {
+    const material = keep(new THREE.MeshStandardMaterial({ color: hex, emissive, emissiveIntensity: 2.5 }));
+    add(tower, new THREE.SphereGeometry(0.0026, 12, 8), material, x, 0.17, tf + 0.011);
+    return material;
+  };
+  const powerLed = led(0x1f8f2a, 0x3cff4c, -0.02);
+  const diskLed = led(0x8a5010, 0xffa020, 0.02);
+  diskLed.emissiveIntensity = 0.2;
   // Bouton d'alimentation et petit bouton de réinitialisation.
   const power = add(tower, new RoundedBoxGeometry(0.034, 0.034, 0.012, 3, 0.006), plasticDark, 0, 0.12, tf + 0.012);
   power.userData.zone = 'power';
@@ -259,8 +271,27 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   tube([[0.04, 0.02, 0.085], [0.06, 0.004, 0.03], [-0.15, 0.004, -0.02], [-0.25, 0.004, -0.3], [-0.42, 0.06, -0.31], [-0.48, 0.15, -0.3]]);
   tube([[0.05, 0.2, -0.38], [0.0, 0.08, -0.36], [-0.2, 0.004, -0.33], [-0.4, 0.04, -0.32], [-0.5, 0.25, -0.3]]);
 
+  let powerState: PcPower = 'on';
   return {
     group, monitor, tower,
+    setPower(state) {
+      powerState = state;
+      const on = state !== 'off';
+      powerLed.emissiveIntensity = on ? 2.5 : 0;
+      monitorLed.emissive.setHex(on ? 0x32ff4a : 0xffa000);
+      monitorLed.color.setHex(on ? 0x1f8f2a : 0x8a5a10);
+      monitorLed.emissiveIntensity = on ? 2 : 1.4;
+      glass.emissiveIntensity = state === 'on' ? 0.95 : 0;
+      spill.intensity = state === 'on' ? 0.35 : 0;
+      diskLed.emissiveIntensity = 0.2;
+    },
+    update(time) {
+      if (powerState !== 'busy') return false;
+      // Accès disque irréguliers : le voyant orange scintille.
+      const flicker = Math.sin(time * 0.031) + Math.sin(time * 0.017 + 1.3) + Math.sin(time * 0.0071);
+      diskLed.emissiveIntensity = flicker > 0.6 ? 3 : 0.2;
+      return true;
+    },
     screenCorners() {
       screen.updateWorldMatrix(true, false);
       return [[-1, 1], [1, 1], [1, -1], [-1, -1]].map(([sx, sy]) =>

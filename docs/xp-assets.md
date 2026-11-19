@@ -37,6 +37,7 @@ Toutes les images viennent du clone open source [ShizukuIchi/winXP](https://gith
 | `stop.png`, `refresh.png`, `home.png` | `windowsIcons/stop.png`, `refresh.png`, `home.png` | Arrêter, Actualiser, Démarrage |
 | `search-large.png`, `favorites.png`, `history.png` | `windowsIcons/299(32x32).png`, `744(32x32).png`, `history.png` | Rechercher, Favoris, Historique |
 | `go.png` | `windowsIcons/290.png` | bouton OK de la barre d'adresse |
+| `logo.png` | `windowsIcons/windows-off.png` | drapeau des écrans de démarrage, d'accueil et d'arrêt |
 | `throbber.png` | `windowsIcons/windows.png` | logo animé en haut à droite des fenêtres |
 
 ## Styles des fenêtres

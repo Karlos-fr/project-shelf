@@ -26,7 +26,7 @@ import { depthAwareBlend } from 'three/addons/tsl/display/depthAwareBlend.js';
 import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
-import { buildPc, SCREEN_H, SCREEN_W, type PcEnv } from './pc-model.ts';
+import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower } from './pc-model.ts';
 import { buildShelfModel, SHELF_DEPTH, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
@@ -60,6 +60,7 @@ export type RoomScene = {
   pick(clientX: number, clientY: number): RoomHit;
   // Rectangle de la dalle du CRT dans le canvas, en pixels CSS, une fois la caméra arrivée.
   screenRect(): { left: number; top: number; width: number; height: number } | null;
+  setPower(state: PcPower): void;
   resize(): void;
   setRunning(running: boolean): void;
   dispose(): void;
@@ -429,6 +430,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
 
     if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) busy = true;
+    if (pc.update(performance.now())) busy = true;
     // La lampe d'accent s'allume sur l'étagère et suit la boîte sortie.
     const item = active >= 0 ? model.placed[active] : undefined;
     const aim = item !== undefined
@@ -539,6 +541,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       const left = Math.min(...xs); const top = Math.min(...ys);
       return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
     },
+    setPower(state) { pc.setPower(state); wake(); },
     resize,
     setRunning(next) {
       if (next === running) return;

@@ -33,6 +33,7 @@ export const XP_LABELS = {
     hardDisks: 'Disques durs', removable: 'Périphériques utilisant des supports amovibles', localDisk: 'Disque local (C:)',
     cdDrive: 'Lecteur CD (D:)', systemFolder: 'Dossier système', fileFolder: 'Dossier de fichiers', objects: 'objet(s)',
     emptyFolder: 'Ce dossier est vide.',
+    welcome: 'bienvenue', shuttingDown: 'Windows s’arrête…',
   },
   en: {
     start: 'start', myComputer: 'My Computer', myDocuments: 'My Documents', recycleBin: 'Recycle Bin',
@@ -53,6 +54,7 @@ export const XP_LABELS = {
     hardDisks: 'Hard Disk Drives', removable: 'Devices with Removable Storage', localDisk: 'Local Disk (C:)',
     cdDrive: 'CD Drive (D:)', systemFolder: 'System Folder', fileFolder: 'File Folder', objects: 'object(s)',
     emptyFolder: 'This folder is empty.',
+    welcome: 'welcome', shuttingDown: 'Windows is shutting down…',
   },
 } as const satisfies Record<Locale, Record<string, string>>;
 
@@ -68,7 +70,7 @@ export const XP_FILES = {
   documentsSmall: 'documents-small.png', folderSmall: 'folder-small.png', folder: 'folder.png', disk: 'disk.png', cd: 'cd.png',
   back: 'back.png', forward: 'forward.png', up: 'up.png', stop: 'stop.png', refresh: 'refresh.png', home: 'home.png',
   searchLarge: 'search-large.png', favorites: 'favorites.png', history: 'history.png', go: 'go.png', throbber: 'throbber.png',
-  recycleSmall: 'recycle-small.png',
+  recycleSmall: 'recycle-small.png', logo: 'logo.png',
 } as const;
 export type XpFile = keyof typeof XP_FILES;
 

@@ -17,8 +17,10 @@ import { CRASH_GRACE_MS, readCrashFlag, writeCrashFlag } from '../shelf/crash-gu
 import { selectShelfItems } from '../shelf/shelf-items.ts';
 import type { RoomScene, RoomView, RoomZone } from '../room/room-scene.ts';
 import XpDesktop from '../xp/XpDesktop.tsx';
+import { AwardBios, XpBoot, XpSplash } from '../xp/XpPower.tsx';
 import type { XpCatalog } from '../xp/xp-apps.ts';
 import { XP_CORNER, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
+import type { PcPower } from '../room/pc-model.ts';
 
 export type RoomPageProps = {
   config: SiteConfig;
@@ -34,6 +36,16 @@ const VIEW_ORDER: readonly RoomView[] = ['overview', 'desk', 'screen', 'shelf'];
 // Le bouton d'alimentation mène au bureau tant que l'allumage n'existe pas.
 const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone);
 type ScreenRect = { left: number; top: number; width: number; height: number };
+// États du PC : allumé, séquence d'arrêt (écran d'arrêt, image qui s'écrase), éteint, puis
+// séquence d'allumage (tube qui chauffe, POST Award, démarrage de XP, accueil).
+type PcState = 'on' | 'shutdown' | 'collapse' | 'off' | 'warmup' | 'bios' | 'boot' | 'welcome';
+const PC_NEXT: Partial<Record<PcState, [number, PcState]>> = {
+  shutdown: [2600, 'collapse'], collapse: [750, 'off'],
+  warmup: [1000, 'bios'], bios: [5600, 'boot'], boot: [4200, 'welcome'], welcome: [2000, 'on'],
+};
+const BOOTING: readonly PcState[] = ['warmup', 'bios', 'boot', 'welcome'];
+// Voyants et dalle 3D : éteint dès que l'image s'écrase, occupé pendant les séquences.
+const powerOf = (state: PcState): PcPower => (state === 'on' ? 'on' : state === 'off' || state === 'collapse' ? 'off' : 'busy');
 
 // ----------------------------------------------------------------------------
 // Rend l'en-tête, la scène plein cadre avec ses commandes, puis l'index des projets.
@@ -56,6 +68,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [zoomed, setZoomed] = useState(-1);
   const [hover, setHover] = useState<{ zone: RoomZone; x: number; y: number } | null>(null);
   const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
+  const [pc, setPc] = useState<PcState>('on');
   const labels: Record<RoomView, string> = { overview: messages.roomOverview, desk: messages.roomDesk, screen: messages.roomScreen, shelf: messages.roomShelf };
 
   // Charge la scène dès l'hydratation : la chambre est tout le contenu de la page.
@@ -117,6 +130,14 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   }, []);
   useEffect(() => { sceneRef.current?.setView(view); }, [view, sceneState]);
   useEffect(() => { sceneRef.current?.setActive(active); }, [active, sceneState]);
+  // Enchaîne les écrans d'allumage et d'extinction, puis met voyants et dalle à jour.
+  useEffect(() => {
+    sceneRef.current?.setPower(powerOf(pc));
+    const next = PC_NEXT[pc];
+    if (next === undefined) return;
+    const timer = window.setTimeout(() => setPc(next[1]), next[0]);
+    return () => window.clearTimeout(timer);
+  }, [pc, sceneState]);
   // Face à l'écran : l'interface HTML se cale sur la dalle dès que la caméra est arrivée.
   useEffect(() => {
     const scene = sceneRef.current;
@@ -135,10 +156,17 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
   function goTo(next: RoomView): void {
+    // Quitter l'écran pendant une séquence la termine aussitôt.
+    if (next !== 'screen') setPc((state) => (BOOTING.includes(state) ? 'on' : state === 'shutdown' || state === 'collapse' ? 'off' : state));
     setView(next);
     setZoomed(-1);
     setActive(-1);
     setHover(null);
+  }
+  // Bouton de la tour ou menu Démarrer : la caméra se place face à l'écran pour voir la séquence.
+  function togglePower(): void {
+    if (pc === 'on') { setPc('shutdown'); setView('screen'); }
+    else if (pc === 'off') { setPc('warmup'); setView('screen'); }
   }
   // Premier clic sur une boîte : la caméra s'en approche ; re-clic ou clic à côté : elle recule.
   function zoomTo(index: number): void {
@@ -164,7 +192,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     scene.setPointer(((event.clientX - rect.left) / rect.width) * 2 - 1, -(((event.clientY - rect.top) / rect.height) * 2 - 1));
     const hit = scene.pick(event.clientX, event.clientY);
     const onItem = view === 'shelf' && hit.index >= 0;
-    const toZone = hit.zone !== null && zoneView(hit.zone) !== view && !onItem ? hit.zone : null;
+    const toZone = hit.zone !== null && (hit.zone === 'power' || zoneView(hit.zone) !== view) && !onItem ? hit.zone : null;
     event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : 'default';
     setHover(toZone === null ? null : { zone: toZone, x: event.clientX - rect.left, y: event.clientY - rect.top });
     if (onItem && zoomed < 0) setActive(hit.index);
@@ -178,11 +206,14 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     const scene = sceneRef.current;
     if (scene === null) return;
     const hit = scene.pick(event.clientX, event.clientY);
+    if (hit.zone === 'power') { togglePower(); return; }
     if (view === 'shelf' && hit.index >= 0) { zoomTo(hit.index === zoomed ? -1 : hit.index); return; }
     if (hit.zone !== null && zoneView(hit.zone) !== view) { goTo(zoneView(hit.zone)); return; }
     if (zoomed >= 0) zoomTo(-1);
   }
   function handleKeyDown(event: globalThis.KeyboardEvent): void {
+    // Une touche pendant l'allumage passe directement au bureau.
+    if (BOOTING.includes(pc) && event.key !== 'Escape') { setPc('on'); event.preventDefault(); return; }
     if (event.key === 'Escape' && (zoomed >= 0 || view !== 'overview')) { back(); event.preventDefault(); return; }
     if (view !== 'shelf' || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
     if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select') !== null) return;
@@ -213,12 +244,19 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             <span className="room__percent">{progress} %</span>
           </div>
         )}
-        {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{labels[zoneView(hover.zone)]}</span>}
-        {view === 'screen' && screenRect !== null && (
-          <div className="room__screen" style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}>
-            <XpDesktop locale={locale} catalog={xpCatalog} base={base} onTurnOff={() => goTo('desk')} />
+        {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{hover.zone === 'power' ? messages.roomPower : labels[zoneView(hover.zone)]}</span>}
+        {view === 'screen' && screenRect !== null && pc !== 'off' && (
+          <div className={`room__screen is-${pc}`} style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}
+            onClick={() => { if (BOOTING.includes(pc)) setPc('on'); }}>
+            {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} onTurnOff={() => setPc('shutdown')} />}
+            {(pc === 'shutdown' || pc === 'collapse') && <div className="room__tube"><XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="shutdown" /></div>}
+            {pc === 'warmup' && <div className="xp-power" />}
+            {pc === 'bios' && <AwardBios />}
+            {pc === 'boot' && <XpBoot logo={xpAsset(base, 'logo')} />}
+            {pc === 'welcome' && <XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="welcome" />}
           </div>
         )}
+        {view === 'screen' && pc === 'off' && sceneState === 'ready' && <p className="room__power-hint">{messages.roomPowerOff}</p>}
         {view === 'screen' && sceneState === 'ready' && <button type="button" className="room__exit" onClick={() => goTo('desk')}>{xp.exit}</button>}
         {sceneState === 'ready' && view !== 'screen' && (
           <div className="room__hud">

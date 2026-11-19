@@ -148,3 +148,46 @@
 .xp-task img { width: 15px; height: 15px; flex-shrink: 0; }
 .xp-task span { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .xp-tray { background: linear-gradient(to bottom, #0c59b9 1%, #139ee9 6%, #18b5f2 10%, #139beb 14%, #1290e8 19%, #0d8dea 63%, #0d9ff1 81%, #0f9eed 88%, #119be9 91%, #1392e2 94%, #137ed7 97%, #095bc9 100%) !important; border-left: 1px solid #1042af !important; box-shadow: inset 1px 0 1px #18bbff !important; }
+
+/* ---------------------------------------------------------------- Allumage et extinction */
+.xp-power { position: relative; width: 1024px; height: 768px; overflow: hidden; background: #000; user-select: none; cursor: default; }
+/* POST Award : texte VGA gris clair sur fond noir, logos en haut. */
+.xp-bios { padding: 18px 26px; color: #b8b8b8; font: 20px/28px "Lucida Console", "Courier New", monospace; }
+.xp-bios__text, .xp-bios__footer { margin: 0; font: inherit; white-space: pre; }
+.xp-bios__footer { position: absolute; left: 26px; bottom: 18px; }
+.xp-bios__award { position: absolute; left: 22px; top: 16px; width: 44px; height: 54px; }
+.xp-bios__award i { position: absolute; inset: 0 6px 18px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #8fd0ff, #1660c8 60%, #0a2f6e); box-shadow: 0 0 0 3px #e7c64a; }
+.xp-bios__award::before, .xp-bios__award::after { content: ""; position: absolute; bottom: 0; width: 10px; height: 22px; background: #d63b2f; }
+.xp-bios__award::before { left: 10px; transform: skewX(12deg); }
+.xp-bios__award::after { right: 10px; transform: skewX(-12deg); }
+.xp-bios__energy { position: absolute; right: 30px; top: 18px; display: flex; flex-direction: column; align-items: center; width: 150px; padding: 6px 0 4px; border: 3px solid #3fb24a; border-radius: 6px; color: #3fb24a; font: italic 700 30px/1 Georgia, serif; }
+.xp-bios__energy b { color: #ffd43a; font-size: 26px; }
+/* Démarrage de XP : logo centré, barre aux trois blocs bleus. */
+.xp-boot { display: flex; flex-direction: column; align-items: center; color: #fff; }
+.xp-boot__logo { display: flex; align-items: flex-end; gap: 6px; margin-top: 250px; }
+.xp-boot__logo img { width: 92px; height: auto; }
+.xp-boot__brand { position: relative; display: flex; flex-direction: column; font-family: "Franklin Gothic Medium", "Trebuchet MS", Arial, sans-serif; line-height: 1; }
+.xp-boot__brand small { font-size: 18px; }
+.xp-boot__brand strong { font-size: 58px; font-weight: 700; letter-spacing: -1px; }
+.xp-boot__brand em { position: absolute; right: -34px; top: 12px; color: #f37a20; font: italic 700 30px "Franklin Gothic Medium", "Trebuchet MS", sans-serif; }
+.xp-boot__logo.is-small img { width: 54px; }
+.xp-boot__logo.is-small .xp-boot__brand small { font-size: 11px; }
+.xp-boot__logo.is-small .xp-boot__brand strong { font-size: 34px; }
+.xp-boot__logo.is-small .xp-boot__brand em { right: -22px; top: 6px; font-size: 18px; }
+.xp-boot__bar { position: relative; width: 156px; height: 18px; margin-top: 60px; overflow: hidden; border: 2px solid #b2b2b2; border-radius: 5px; }
+.xp-boot__bar span { position: absolute; top: 2px; left: -40px; width: 34px; height: 10px; animation: xp-boot-slide 2.4s linear infinite;
+  background: linear-gradient(to right, #2838c7 0 9px, transparent 9px 12px, #2838c7 12px 21px, transparent 21px 24px, #2838c7 24px 33px); filter: drop-shadow(0 0 1px #6c80ff); }
+.xp-boot__bar span { background: linear-gradient(to right, #3b5bff 0 9px, transparent 9px 12px, #3b5bff 12px 21px, transparent 21px 24px, #3b5bff 24px 33px); }
+@keyframes xp-boot-slide { from { left: -40px; } to { left: 160px; } }
+.xp-boot__footer { position: absolute; left: 30px; right: 40px; bottom: 26px; display: flex; justify-content: space-between; align-items: flex-end; font: 13px Arial, sans-serif; }
+.xp-boot__footer strong { font: italic 700 24px Arial, sans-serif; }
+/* Accueil et arrêt : bleu XP, bandeaux haut et bas, liserés orange et blanc. */
+.xp-splash { display: flex; flex-direction: column; background: #5a7edc; color: #fff; }
+.xp-splash__band { position: relative; height: 92px; background: #00309c; }
+.xp-splash__band::after { content: ""; position: absolute; left: 0; right: 0; bottom: -2px; height: 2px; background: linear-gradient(to right, #5a7edc 0%, #f7b03c 35%, #fbd78e 50%, #f7b03c 65%, #5a7edc 100%); }
+.xp-splash__band.is-bottom { margin-top: auto; height: 108px; background: linear-gradient(to bottom, #2e4fb5, #00309c 30%); }
+.xp-splash__band.is-bottom::after { top: -2px; bottom: auto; background: linear-gradient(to right, #5a7edc 0%, #c4d5ff 40%, #ffffff 50%, #c4d5ff 60%, #5a7edc 100%); }
+.xp-splash__middle { display: flex; flex: 1; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at 15% 20%, rgb(255 255 255 / .35), transparent 45%), linear-gradient(to right, #5a7edc, #6b8fe6 50%, #5a7edc); }
+.xp-splash__welcome { margin-left: 260px; font: italic 700 72px "Franklin Gothic Medium", "Trebuchet MS", Arial, sans-serif; letter-spacing: -1px; text-shadow: 2px 2px 3px rgb(0 0 40 / .35); }
+.xp-splash__shutdown { display: flex; flex-direction: column; align-items: flex-start; gap: 28px; margin-left: 120px; font: 24px "Trebuchet MS", Arial, sans-serif; }
