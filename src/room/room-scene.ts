@@ -30,6 +30,7 @@ import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } 
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
 import { buildL3dCube } from './l3d-cube.ts';
+import { buildOutlet } from './outlet.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
@@ -99,7 +100,7 @@ const VIEWS: Record<RoomView, Pose> = {
   poster: pose([POSTER.x + 0.04, POSTER.y, BACK + 1.75], [POSTER.x, POSTER.y, BACK], 40),
   // Calculée à la volée face à la dalle ; cette pose ne sert que de repli.
   screen: pose([-0.1, 0.98, -0.5], [-0.1, 0.98, -1.2], 30),
-  shelf: pose([0.05, SHELF.y + 0.24, SHELF.z], [SHELF.x, SHELF.y + 0.13, SHELF.z], 42),
+  shelf: pose([0.05, SHELF.y - 0.02, SHELF.z], [SHELF.x, SHELF.y - 0.12, SHELF.z], 44),
 };
 
 // ----------------------------------------------------------------------------
@@ -309,12 +310,33 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   rack.rotation.y = Math.PI / 2;
   rack.userData.zone = 'shelf';
   scene.add(rack);
-  // Cube à LED L3D 8 x 8 x 8 sur le niveau du haut.
+  // Cube à LED L3D 8 x 8 x 8 sur le niveau sous les boîtes, LED éteintes.
   const cube = buildL3dCube(keep);
-  cube.group.position.set(SHELF.x, RACK_LEVELS[4], SHELF.z);
+  cube.group.position.set(SHELF.x, RACK_LEVELS[2], SHELF.z);
   cube.group.rotation.y = Math.PI / 2;
   cube.group.userData.zone = 'shelf';
   scene.add(cube.group);
+  // Prise murale à côté de l'étagère, et câble noir : il sort à l'arrière du socle, descend
+  // entre l'étagère et le mur, longe la plinthe puis remonte jusqu'à la fiche.
+  const outlet = buildOutlet(keep);
+  outlet.group.position.set(-RX, 0.3, 0.38);
+  outlet.group.rotation.y = Math.PI / 2;
+  scene.add(outlet.group);
+  outlet.group.updateMatrixWorld(true);
+  const plug = outlet.group.localToWorld(outlet.cableStart.clone());
+  const cablePath = new THREE.CatmullRomCurve3([
+    [SHELF.x - 0.089, RACK_LEVELS[2] + 0.015, SHELF.z],
+    [-RX + 0.04, RACK_LEVELS[2] + 0.012, SHELF.z + 0.03],
+    [-RX + 0.006, RACK_LEVELS[2] - 0.08, SHELF.z + 0.06],
+    [-RX + 0.006, 0.45, SHELF.z + 0.13],
+    [-RX + 0.007, 0.12, SHELF.z + 0.2],
+    [-RX + 0.021, 0.006, SHELF.z + 0.32],
+    [-RX + 0.021, 0.006, 0.28],
+    [-RX + 0.024, 0.07, 0.36],
+    [plug.x + 0.006, plug.y - 0.08, plug.z],
+    [plug.x, plug.y, plug.z],
+  ].map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+  add(scene, new THREE.TubeGeometry(cablePath, 220, 0.0028, 8, false), keep(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.55 })), 0, 0, 0);
   const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width, { furniture: false, plaques: false });
   model.group.position.set(SHELF.x, SHELF.y, SHELF.z);
   model.group.rotation.y = Math.PI / 2;
@@ -465,7 +487,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
 
     if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) busy = true;
     if (pc.update(performance.now())) busy = true;
-    // Les LED du cube s'animent face à l'étagère, à 20 images par seconde, sans relancer le lissage.
+    // Une fois allumées, les LED du cube s'animent face à l'étagère, à 20 images par seconde.
     const cubeChanged = cube.update(performance.now(), view === 'shelf');
     // La lampe d'accent s'allume sur l'étagère et suit la boîte sortie.
     const item = active >= 0 ? model.placed[active] : undefined;

@@ -4,8 +4,9 @@
 // D'après les plans du boîtier publiés par enjrolas/L3D-Hardware (8x8x8 cube/case) :
 // enveloppe en acrylique transparent de 2 mm (environ 178 x 227 mm, dessus de 171 mm),
 // barrettes de 4 mm à 8 logements qui tiennent les LED, pas d'environ 21 mm. Les 512
-// LED sont des instances lumineuses animées en arc-en-ciel ; le studio L3D de l'auteur
-// pourra plus tard piloter ces couleurs. Origine : dessous du socle, au centre ; avant +z.
+// LED sont éteintes par défaut (plastique translucide) ; setLit les allume en arc-en-ciel
+// animé, en attendant que le studio L3D de l'auteur les pilote. Origine : dessous du
+// socle, au centre ; avant +z ; le câble d'alimentation sort à l'arrière du socle.
 // ============================================================================
 import * as THREE from 'three/webgpu';
 
@@ -17,7 +18,9 @@ const BOX_H = 0.197;
 
 export type L3dCube = {
   group: THREE.Group;
-  // Met les couleurs à jour à 20 images par seconde quand animate est vrai.
+  // Allume (arc-en-ciel animé) ou éteint les LED.
+  setLit(lit: boolean): void;
+  // Met les couleurs à jour à 20 images par seconde quand le cube est allumé et que animate est vrai.
   // Retour : vrai si les LED ont changé et qu'il faut redessiner.
   update(time: number, animate: boolean): boolean;
 };
@@ -85,13 +88,21 @@ export function buildL3dCube(keep: <V extends { dispose(): void }>(value: V) => 
     });
     if (leds.instanceColor !== null) leds.instanceColor.needsUpdate = true;
   };
-  paint(0);
+  // LED éteintes : époxy translucide gris, sans lumière propre.
+  const off = () => {
+    colour.setRGB(0.16, 0.17, 0.18, THREE.SRGBColorSpace);
+    for (let i = 0; i < positions.length; i += 1) leds.setColorAt(i, colour);
+    if (leds.instanceColor !== null) leds.instanceColor.needsUpdate = true;
+  };
+  off();
   group.add(leds);
+  let lit = false;
   let last = 0;
   return {
     group,
+    setLit(next) { lit = next; if (lit) paint(performance.now()); else off(); },
     update(time, animate) {
-      if (!animate || time - last < 50) return false;
+      if (!lit || !animate || time - last < 50) return false;
       last = time;
       paint(time);
       return true;
