@@ -43,6 +43,8 @@ export function buildL3dCube(keep: <V extends { dispose(): void }>(value: V) => 
   group.add(shell);
   const edges = new THREE.LineSegments(keep(new THREE.EdgesGeometry(shellGeometry)), keep(new THREE.LineBasicMaterial({ color: 0xcfe6ff, transparent: true, opacity: 0.55 })));
   edges.position.copy(shell.position);
+  // Un trait se sélectionne jusqu'à 1 m du rayon par défaut : il volerait tous les clics autour du cube.
+  edges.raycast = () => {};
   group.add(edges);
   // Barrettes verticales en acrylique de 4 mm : une par colonne de LED.
   const strips = new THREE.InstancedMesh(keep(new THREE.BoxGeometry(0.004, BOX_H - 0.01, 0.006)), keep(new THREE.MeshPhysicalMaterial({
