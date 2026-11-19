@@ -58,4 +58,4 @@ Une première version prise sur Flickr (« I want to believe » par mat-) a ét�
 
 ## Magazines de la chambre
 
-Les couvertures de `content/room/mags/` (PC Team n°53, 57, 60 ; Casus Belli n°121, 122) viennent des scans publiés par abandonware-magazines.org (https://www.abandonware-magazines.org), réduites à 1400 px de haut. Elles appartiennent à leurs éditeurs ; l'auteur assume ce choix pour ce projet personnel non commercial.
+Les couvertures de `content/room/mags/` (PC Team n°36, 59, 61 ; Casus Belli n°89, 90) viennent des scans publiés par abandonware-magazines.org (https://www.abandonware-magazines.org), réduites à 1400 px de haut (le scan du Casus Belli n°89, posé sur fond blanc, est rogné à la couverture). Elles appartiennent à leurs éditeurs ; l'auteur assume ce choix pour ce projet personnel non commercial.

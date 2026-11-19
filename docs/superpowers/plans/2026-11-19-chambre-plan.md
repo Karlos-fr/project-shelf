@@ -38,7 +38,7 @@ On propose une troisième version du site, à côté de la vitrine (`/{langue}/`
 - Les câbles sont visibles entre les périphériques et la tour.
 
 ### Objets d'époque (ajoutés plus tard)
-- ✅ Pile de magazines au coin droit du bureau (src/room/magazines.ts) : PC Team n°53, 57 et 60 (2000) et Casus Belli n°121 et 122 (1999), couvertures d'abandonware-magazines.org.
+- ✅ Pile de magazines au coin droit du bureau (src/room/magazines.ts) : PC Team n°36 (1998), 59 et 61 (2000) et Casus Belli n°89 et 90 (1995), couvertures d'abandonware-magazines.org.
 - **À venir : les magazines pourront s'ouvrir et se feuilleter comme de vrais magazines** (pages scannées du même site).
 Game Boy, Walkman rouge, disquettes, CD, magazines PC Team. La liste sera complétée par l'auteur.
 

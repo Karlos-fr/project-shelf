@@ -1,7 +1,7 @@
 // ============================================================================
 // Magazines — Pile de revues d'époque posée sur le bureau de la chambre
 // ----------------------------------------------------------------------------
-// Deux Casus Belli (1999) et trois PC Team (2000) aux vraies couvertures, scannées par
+// Deux Casus Belli (1995) et trois PC Team (1998 et 2000) aux vraies couvertures, scannées par
 // abandonware-magazines.org. Chaque revue est un pavé : couverture brillante dessus,
 // dos de couleur dessous, tranche collée portant le titre, et bords de pages. La pile
 // est un peu de travers, comme posée à la main. Origine : dessous de la pile, au centre.
@@ -23,11 +23,11 @@ export type Magazine = {
 
 // Du dessous vers le dessus de la pile.
 export const MAGAZINES: readonly Magazine[] = [
-  { file: 'casusbelli-121.jpg', title: 'CASUS BELLI', issue: 'N° 121 · AOÛT-SEPT. 1999', size: [0.21, 0.297, 0.0055], spine: '#c8102e' },
-  { file: 'casusbelli-122.jpg', title: 'CASUS BELLI', issue: 'N° 122 · OCT.-NOV. 1999', size: [0.21, 0.297, 0.0055], spine: '#1f5fae' },
-  { file: 'pcteam-53.jpg', title: 'PC TEAM', issue: 'N° 53 · JANVIER 2000', size: [0.215, 0.285, 0.0075], spine: '#f0f0f0' },
-  { file: 'pcteam-57.jpg', title: 'PC TEAM', issue: 'N° 57 · MAI 2000', size: [0.215, 0.285, 0.0075], spine: '#1c63c9' },
-  { file: 'pcteam-60.jpg', title: 'PC TEAM', issue: 'N° 60 · SEPTEMBRE 2000', size: [0.215, 0.285, 0.0075], spine: '#f39a1d' },
+  { file: 'casusbelli-89.jpg', title: 'CASUS BELLI', issue: 'N° 89 · OCT.-NOV. 1995', size: [0.21, 0.29, 0.0055], spine: '#d4202a' },
+  { file: 'casusbelli-90.jpg', title: 'CASUS BELLI', issue: 'N° 90 · DÉCEMBRE 1995', size: [0.21, 0.288, 0.0055], spine: '#2a2a2a' },
+  { file: 'pcteam-36.jpg', title: 'PC TEAM', issue: 'N° 36 · JUIN 1998', size: [0.215, 0.285, 0.0075], spine: '#2f7d32' },
+  { file: 'pcteam-59.jpg', title: 'PC TEAM', issue: 'N° 59 · JUILLET 2000', size: [0.215, 0.285, 0.0075], spine: '#e8771c' },
+  { file: 'pcteam-61.jpg', title: 'PC TEAM', issue: 'N° 61 · OCTOBRE 2000', size: [0.215, 0.285, 0.0075], spine: '#1e4fa8' },
 ];
 
 // ----------------------------------------------------------------------------
@@ -78,8 +78,7 @@ function spineCanvas(magazine: Magazine): HTMLCanvasElement {
   const [canvas, context] = canvas2d(1024, 40);
   context.fillStyle = magazine.spine;
   context.fillRect(0, 0, 1024, 40);
-  const light = magazine.spine === '#f0f0f0';
-  context.fillStyle = light ? '#1c3f8f' : '#ffffff';
+  context.fillStyle = '#ffffff';
   context.textBaseline = 'middle';
   context.font = '900 26px "Arial Black", Arial, sans-serif';
   context.fillText(magazine.title, 40, 21);
