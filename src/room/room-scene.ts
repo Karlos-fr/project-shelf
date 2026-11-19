@@ -27,12 +27,13 @@ import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower } from './pc-model.ts';
+import { buildPoster } from './poster.ts';
 import { buildShelfModel, SHELF_DEPTH, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
-export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen';
+export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster';
 // Zone cliquable : un meuble qui mène à une vue.
-export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power';
+export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'poster';
 export type RoomHit = { zone: RoomZone | null; index: number };
 
 export type RoomSceneOptions = {
@@ -79,6 +80,8 @@ const WIN = { x: 1.05, w: 0.95, y0: 0.95, y1: 2.2 };
 const BEECH = { tint: 0xf7dcc0, brightness: 1.25, normalScale: 0.9 } as const;
 // Bureau en hêtre contre le mur du fond.
 const DESK = { x: -0.15, z: BACK + 0.38, w: 1.4, d: 0.7, h: 0.74 };
+// Affiche scotchée au mur du fond, au-dessus du bureau.
+const POSTER = { x: -0.32, y: 1.64 };
 // Étagère accrochée au mur de gauche : centre de la tablette du milieu.
 const SHELF = { x: -RX + SHELF_DEPTH / 2 + 0.015, y: 1.32, z: -0.3, width: 1.2 };
 
@@ -88,6 +91,7 @@ const pose = (p: [number, number, number], t: [number, number, number], fov: num
 const VIEWS: Record<RoomView, Pose> = {
   overview: pose([1.5, 1.55, 1.6], [-0.55, 0.88, -0.85], 52),
   desk: pose([-0.12, 1.36, 0.02], [-0.16, 0.9, -1.3], 42),
+  poster: pose([POSTER.x + 0.05, POSTER.y - 0.05, BACK + 1.45], [POSTER.x, POSTER.y, BACK], 40),
   // Calculée à la volée face à la dalle ; cette pose ne sert que de repli.
   screen: pose([-0.1, 0.98, -0.5], [-0.1, 0.98, -1.2], 30),
   shelf: pose([0.05, SHELF.y + 0.16, SHELF.z], [SHELF.x, SHELF.y + 0.02, SHELF.z], 40),
@@ -271,6 +275,12 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   chair.userData.zone = 'desk';
   scene.add(chair);
   buildChair(chair);
+
+  // --------------------------------------------------------------- affiche
+  const poster = buildPoster(keep, maxAniso);
+  poster.position.set(POSTER.x, POSTER.y, BACK + 0.004);
+  poster.userData.zone = 'poster';
+  scene.add(poster);
 
   // --------------------------------------------------------------- ordinateur
   const pc = await buildPc({ keep, maxAniso, smudgeTex, ...options.pc });
@@ -528,7 +538,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       const rect = canvas.getBoundingClientRect();
       ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
-      const hit = raycaster.intersectObjects([pc.group, desk, chair, model.group, room], true)[0];
+      const hit = raycaster.intersectObjects([pc.group, desk, chair, model.group, poster, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
     },

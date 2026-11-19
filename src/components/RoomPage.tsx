@@ -32,7 +32,7 @@ export type RoomPageProps = {
 
 type SceneState = 'loading' | 'ready' | 'failed';
 const CRASH_FLAG = 'project-shelf:room-loading';
-const VIEW_ORDER: readonly RoomView[] = ['overview', 'desk', 'screen', 'shelf'];
+const VIEW_ORDER: readonly RoomView[] = ['overview', 'desk', 'screen', 'shelf', 'poster'];
 // Le bouton d'alimentation mène au bureau tant que l'allumage n'existe pas.
 const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone);
 type ScreenRect = { left: number; top: number; width: number; height: number };
@@ -69,7 +69,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [hover, setHover] = useState<{ zone: RoomZone; x: number; y: number } | null>(null);
   const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
   const [pc, setPc] = useState<PcState>('on');
-  const labels: Record<RoomView, string> = { overview: messages.roomOverview, desk: messages.roomDesk, screen: messages.roomScreen, shelf: messages.roomShelf };
+  const labels: Record<RoomView, string> = { overview: messages.roomOverview, desk: messages.roomDesk, screen: messages.roomScreen, shelf: messages.roomShelf, poster: messages.roomPoster };
 
   // Charge la scène dès l'hydratation : la chambre est tout le contenu de la page.
   useEffect(() => {

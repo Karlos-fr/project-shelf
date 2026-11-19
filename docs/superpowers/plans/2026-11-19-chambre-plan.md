@@ -41,6 +41,7 @@ On propose une troisième version du site, à côté de la vitrine (`/{langue}/`
 Game Boy, Walkman rouge, disquettes, CD, magazines PC Team. La liste sera complétée par l'auteur.
 
 ### Posters
+- ✅ Poster « I WANT TO BELIEVE » au-dessus du bureau (src/room/poster.ts) : reproduction peinte pour le projet, la photo d'origine n'est pas copiée ; vue « Le poster ».
 - Posters muraux d'esprit années 90. Le contenu est à définir ; une idée est de faire de fausses affiches d'époque pour les projets.
 
 ### Fabrication des modèles
