@@ -29,6 +29,7 @@ import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
+import { buildL3dCube } from './l3d-cube.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
@@ -65,6 +66,7 @@ export type RoomScene = {
   screenRect(): { left: number; top: number; width: number; height: number } | null;
   setPower(state: PcPower): void;
   setScreen(phase: PcScreen): void;
+  pressPower(): void;
   resize(): void;
   setRunning(running: boolean): void;
   dispose(): void;
@@ -97,7 +99,7 @@ const VIEWS: Record<RoomView, Pose> = {
   poster: pose([POSTER.x + 0.04, POSTER.y, BACK + 1.75], [POSTER.x, POSTER.y, BACK], 40),
   // Calculée à la volée face à la dalle ; cette pose ne sert que de repli.
   screen: pose([-0.1, 0.98, -0.5], [-0.1, 0.98, -1.2], 30),
-  shelf: pose([0.05, SHELF.y + 0.16, SHELF.z], [SHELF.x, SHELF.y + 0.02, SHELF.z], 40),
+  shelf: pose([0.05, SHELF.y + 0.24, SHELF.z], [SHELF.x, SHELF.y + 0.13, SHELF.z], 42),
 };
 
 // ----------------------------------------------------------------------------
@@ -307,6 +309,12 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   rack.rotation.y = Math.PI / 2;
   rack.userData.zone = 'shelf';
   scene.add(rack);
+  // Cube à LED L3D 8 x 8 x 8 sur le niveau du haut.
+  const cube = buildL3dCube(keep);
+  cube.group.position.set(SHELF.x, RACK_LEVELS[4], SHELF.z);
+  cube.group.rotation.y = Math.PI / 2;
+  cube.group.userData.zone = 'shelf';
+  scene.add(cube.group);
   const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width, { furniture: false, plaques: false });
   model.group.position.set(SHELF.x, SHELF.y, SHELF.z);
   model.group.rotation.y = Math.PI / 2;
@@ -457,6 +465,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
 
     if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) busy = true;
     if (pc.update(performance.now())) busy = true;
+    // Les LED du cube s'animent face à l'étagère, à 20 images par seconde, sans relancer le lissage.
+    const cubeChanged = cube.update(performance.now(), view === 'shelf');
     // La lampe d'accent s'allume sur l'étagère et suit la boîte sortie.
     const item = active >= 0 ? model.placed[active] : undefined;
     const aim = item !== undefined
@@ -465,7 +475,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     lamp.target.position.lerp(aim, reducedMotion ? 1 : 1 - Math.exp(-3 * dt));
     lamp.intensity = damp(lamp.intensity, view !== 'shelf' ? 0 : item !== undefined ? 6 : 3, 3, dt);
     if (busy) settle = SETTLE_FRAMES;
-    if (busy || performance.now() < awakeUntil || settle > 0) {
+    if (busy || performance.now() < awakeUntil || settle > 0 || cubeChanged) {
       pipeline.render();
       settle -= 1;
     }
@@ -560,7 +570,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       raycaster.setFromCamera(ndc, camera);
       // Les boîtes d'abord : le volume de clic de l'étagère passe devant elles.
       const item = raycaster.intersectObjects(model.pickTargets(), true)[0];
-      const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, model.group, poster, room], true)[0];
+      const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, cube.group, model.group, poster, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
     },
@@ -575,6 +585,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     },
     setPower(state) { pc.setPower(state); wake(); },
     setScreen(phase) { pc.setScreen(phase); wake(); },
+    pressPower() { pc.pressPower(); wake(600); },
     resize,
     setRunning(next) {
       if (next === running) return;

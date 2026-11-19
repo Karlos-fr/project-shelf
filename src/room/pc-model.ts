@@ -41,7 +41,9 @@ export type PcModel = {
   setPower(state: PcPower): void;
   // Ce qu'affiche la dalle 3D pendant les séquences, quand l'interface HTML n'est pas devant.
   setScreen(phase: PcScreen): void;
-  // Anime le voyant du disque dur ; retour : vrai tant qu'il faut redessiner.
+  // Enfonce le bouton d'alimentation, qui remonte aussitôt (environ un quart de seconde).
+  pressPower(): void;
+  // Anime le bouton et le voyant du disque dur ; retour : vrai tant qu'il faut redessiner.
   update(time: number): boolean;
 };
 
@@ -280,6 +282,8 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   tube([[0.05, 0.2, -0.38], [0.0, 0.08, -0.36], [-0.2, 0.004, -0.33], [-0.4, 0.04, -0.32], [-0.5, 0.25, -0.3]]);
 
   let powerState: PcPower = 'on';
+  let pressedAt = -1;
+  const powerRestZ = power.position.z;
   return {
     group, monitor, tower,
     setPower(state) {
@@ -300,8 +304,17 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
       paintPhase(context, phase, desktopCopy, logo, env.labels.start === 'start' ? 'en' : 'fr');
       screenTexture.needsUpdate = true;
     },
+    pressPower() { pressedAt = performance.now(); },
     update(time) {
-      if (powerState !== 'busy') return false;
+      let moving = false;
+      if (pressedAt >= 0) {
+        // Course de 5 mm : descente rapide, remontée un peu plus lente.
+        const t = (time - pressedAt) / 280;
+        power.position.z = powerRestZ - (t < 1 ? Math.sin(Math.PI * Math.min(1, t) ** 0.7) * 0.005 : 0);
+        if (t >= 1) pressedAt = -1;
+        moving = true;
+      }
+      if (powerState !== 'busy') return moving;
       // Accès disque irréguliers : le voyant orange scintille.
       const flicker = Math.sin(time * 0.031) + Math.sin(time * 0.017 + 1.3) + Math.sin(time * 0.0071);
       diskLed.emissiveIntensity = flicker > 0.6 ? 3 : 0.2;

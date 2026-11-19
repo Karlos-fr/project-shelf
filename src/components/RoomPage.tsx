@@ -205,7 +205,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     const scene = sceneRef.current;
     if (scene === null) return;
     const hit = scene.pick(event.clientX, event.clientY);
-    if (hit.zone === 'power') { togglePower(); return; }
+    if (hit.zone === 'power') { scene.pressPower(); togglePower(); return; }
     if (view === 'shelf' && hit.index >= 0) { zoomTo(hit.index === zoomed ? -1 : hit.index); return; }
     if (hit.zone !== null && zoneView(hit.zone) !== view) { goTo(zoneView(hit.zone)); return; }
     // Sans bouton ni étiquette, un clic à côté ramène en arrière : boîte, puis vue, puis vue d'ensemble.
