@@ -34,6 +34,8 @@ type SceneState = 'loading' | 'ready' | 'failed';
 const CRASH_FLAG = 'project-shelf:room-loading';
 // Le bouton d'alimentation mène au bureau tant que l'allumage n'existe pas.
 const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone);
+// Pas d'une flèche du clavier autour du cube : 15°.
+const ORBIT_STEP = Math.PI / 12;
 type ScreenRect = { left: number; top: number; width: number; height: number };
 // États du PC : allumé, séquence d'arrêt (écran d'arrêt, image qui s'écrase), éteint, puis
 // séquence d'allumage (tube qui chauffe, POST Award, démarrage de XP, accueil).
@@ -67,6 +69,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [sceneState, setSceneState] = useState<SceneState>('loading');
   const [progress, setProgress] = useState(0);
   const [view, setView] = useState<RoomView>('overview');
+  const dragRef = useRef<{ x: number; moved: number } | null>(null);
+  const draggedRef = useRef(false);
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
   const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
@@ -183,15 +187,40 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   function back(): void {
     if (zoomed >= 0) zoomTo(-1);
     else if (view === 'screen') goTo('desk');
+    else if (view === 'cube') goTo('shelf');
     else if (view !== 'overview') goTo('overview');
   }
 
+  // Vue du cube : un glissé horizontal fait tourner la caméra, et le clic qui le termine est ignoré.
+  function handlePointerDown(event: PointerEvent<HTMLCanvasElement>): void {
+    draggedRef.current = false;
+    if (view !== 'cube' || event.button !== 0) return;
+    dragRef.current = { x: event.clientX, moved: 0 };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.currentTarget.style.cursor = 'grabbing';
+  }
+  function handlePointerUp(event: PointerEvent<HTMLCanvasElement>): void {
+    if (dragRef.current === null) return;
+    draggedRef.current = dragRef.current.moved > 4;
+    dragRef.current = null;
+    event.currentTarget.style.cursor = 'grab';
+  }
   function handlePointerMove(event: PointerEvent<HTMLCanvasElement>): void {
     const scene = sceneRef.current;
     if (scene === null) return;
+    const drag = dragRef.current;
+    if (drag !== null) {
+      const dx = event.clientX - drag.x;
+      drag.x = event.clientX;
+      drag.moved += Math.abs(dx);
+      // Toute la largeur du cadre vaut environ 230° : on fait tourner le cube comme sur une platine.
+      scene.orbitCube(-dx / event.currentTarget.getBoundingClientRect().width * Math.PI * 1.3);
+      return;
+    }
     const rect = event.currentTarget.getBoundingClientRect();
     scene.setPointer(((event.clientX - rect.left) / rect.width) * 2 - 1, -(((event.clientY - rect.top) / rect.height) * 2 - 1));
     const hit = scene.pick(event.clientX, event.clientY);
+    if (view === 'cube' && hit.zone === 'cube') { event.currentTarget.style.cursor = 'grab'; return; }
     const onItem = view === 'shelf' && hit.index >= 0;
     const toZone = hit.zone !== null && (hit.zone === 'power' || zoneView(hit.zone) !== view) && !onItem ? hit.zone : null;
     event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : 'default';
@@ -204,6 +233,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   function handleClick(event: MouseEvent<HTMLCanvasElement>): void {
     const scene = sceneRef.current;
     if (scene === null) return;
+    if (draggedRef.current) { draggedRef.current = false; return; }
     const hit = scene.pick(event.clientX, event.clientY);
     if (hit.zone === 'power') { scene.pressPower(); togglePower(); return; }
     if (view === 'shelf' && hit.index >= 0) { zoomTo(hit.index === zoomed ? -1 : hit.index); return; }
@@ -217,6 +247,11 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (pc === 'bios') { if (event.key === 'F1') { setPc('boot'); event.preventDefault(); } else if (event.key !== 'Escape') event.preventDefault(); if (event.key !== 'Escape') return; }
     if (BOOTING.includes(pc) && event.key !== 'Escape') { setPc('on'); event.preventDefault(); return; }
     if (event.key === 'Escape' && (zoomed >= 0 || view !== 'overview')) { back(); event.preventDefault(); return; }
+    if (view === 'cube' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      sceneRef.current?.orbitCube(ORBIT_STEP * (event.key === 'ArrowLeft' ? 1 : -1));
+      event.preventDefault();
+      return;
+    }
     if (view !== 'shelf' || (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) return;
     if (event.target instanceof HTMLElement && event.target.closest('input, textarea, select') !== null) return;
     step(event.key === 'ArrowRight' ? 1 : -1);
@@ -233,6 +268,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
       <h1 className="sr-only">{messages.roomPageTitle}</h1>
       <div className="room__stage" data-state={sceneState}>
         <canvas ref={canvasRef} className="room__canvas" aria-hidden="true"
+          onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}
           onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave} onClick={handleClick} />
         {sceneState === 'loading' && (
           <div className="room__loading">

@@ -36,9 +36,9 @@ import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
-export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster';
+export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'cube';
 // Zone cliquable : un meuble qui mène à une vue.
-export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'poster';
+export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'poster' | 'cube';
 export type RoomHit = { zone: RoomZone | null; index: number };
 
 export type RoomSceneOptions = {
@@ -61,6 +61,8 @@ export type RoomScene = {
   setView(view: RoomView): void;
   setActive(index: number): void;
   setZoom(index: number): void;
+  // Vue du cube : fait pivoter la caméra autour de son centre, en radians (bornée à ± 60°).
+  orbitCube(delta: number): void;
   // Position du pointeur dans [-1, 1] sur chaque axe : léger effet de parallaxe.
   setPointer(x: number, y: number): void;
   pick(clientX: number, clientY: number): RoomHit;
@@ -92,6 +94,11 @@ const POSTER = { x: -0.32, y: 1.64 };
 // Étagère en pin posée au sol contre le mur de gauche : les boîtes sont au 4e niveau, à hauteur des yeux.
 const SHELF = { x: -RX + RACK_DEPTH / 2 + 0.01, y: RACK_LEVELS[3], z: -0.3, width: RACK_WIDTH - 0.04 };
 
+// Centre du cube à LED, posé au milieu du niveau sous les boîtes ; la vue du cube tourne autour.
+const CUBE_CENTER = { y: RACK_LEVELS[2] + 0.125 };
+// Débattement de la caméra de part et d'autre de la face avant du cube.
+const CUBE_ORBIT_MAX = THREE.MathUtils.degToRad(60);
+
 type Pose = { position: THREE.Vector3; target: THREE.Vector3; fov: number };
 const pose = (p: [number, number, number], t: [number, number, number], fov: number): Pose =>
   ({ position: new THREE.Vector3(...p), target: new THREE.Vector3(...t), fov });
@@ -102,6 +109,8 @@ const VIEWS: Record<RoomView, Pose> = {
   // Calculée à la volée face à la dalle ; cette pose ne sert que de repli.
   screen: pose([-0.1, 0.98, -0.5], [-0.1, 0.98, -1.2], 30),
   shelf: pose([0.05, SHELF.y - 0.02, SHELF.z], [SHELF.x, SHELF.y - 0.12, SHELF.z], 44),
+  // Calculée à la volée autour du cube ; cette pose ne sert que de repli.
+  cube: pose([SHELF.x + 0.7, CUBE_CENTER.y + 0.05, SHELF.z], [SHELF.x, CUBE_CENTER.y, SHELF.z], 34),
 };
 
 // ----------------------------------------------------------------------------
@@ -315,7 +324,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const cube = buildL3dCube(keep);
   cube.group.position.set(SHELF.x, RACK_LEVELS[2], SHELF.z);
   cube.group.rotation.y = Math.PI / 2;
-  cube.group.userData.zone = 'shelf';
+  cube.group.userData.zone = 'cube';
   scene.add(cube.group);
   // Le vrai firmware du cube, en WebAssembly : il s'éveille quand le studio L3D lui parle.
   const virtualCube = startVirtualCube(`${roomBase}l3d/l3d-emulator.mjs`, (rgb) => cube.setFrame(rgb));
@@ -404,6 +413,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let zoomed = -1;
   let running = true;
   let awakeUntil = 0;
+  // Angle visé autour du cube et angle affiché, qui le rejoint en douceur.
+  let orbit = 0;
+  let orbitShown = 0;
   const pointer = new THREE.Vector2();
   const sway = new THREE.Vector2();
   const timer = new THREE.Timer();
@@ -430,6 +442,15 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
         const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(model.group.quaternion);
         return { position: center.clone().addScaledVector(normal, 0.86).add(new THREE.Vector3(0, 0.05, 0)), target: center, fov: 34 };
       }
+    }
+    if (view === 'cube') {
+      // Le cube entier (socle compris) occupe environ 70 % du cadre, quel que soit le format.
+      const center = new THREE.Vector3(SHELF.x, CUBE_CENTER.y, SHELF.z);
+      const fov = 34;
+      const half = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+      const distance = Math.max(0.55, 0.3 / 0.7 / 2 / half, 0.26 / 0.7 / 2 / (half * camera.aspect));
+      const position = center.clone().add(new THREE.Vector3(Math.cos(orbitShown) * distance, 0.05 + distance * 0.08, -Math.sin(orbitShown) * distance));
+      return { position, target: center, fov };
     }
     if (view === 'screen') {
       // Recul tel que la dalle remplisse 84 % de la hauteur ou de la largeur du cadre.
@@ -483,7 +504,13 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     scratch.subVectors(current.target, current.position).normalize();
     right.crossVectors(scratch, THREE.Object3D.DEFAULT_UP).normalize();
     up.crossVectors(right, scratch).normalize();
-    const amount = view === 'screen' ? 0 : zoomed >= 0 ? 0.012 : 0.05;
+    // Autour du cube, le glissé fait tourner la caméra : pas de parallaxe en plus.
+    if (view === 'cube') {
+      orbitShown = damp(orbitShown, orbit, 8, dt);
+      if (Math.abs(orbitShown - orbit) > 0.0005) busy = true; else orbitShown = orbit;
+      if (progress >= 1) goal = goalPose();
+    }
+    const amount = view === 'screen' || view === 'cube' ? 0 : zoomed >= 0 ? 0.012 : 0.05;
     camera.position.copy(current.position).addScaledVector(right, sway.x * amount).addScaledVector(up, sway.y * amount * 0.5);
     camera.lookAt(current.target);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
@@ -584,17 +611,23 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       if (next === view) return;
       view = next;
       if (view !== 'shelf') { active = -1; zoomed = -1; }
+      if (view === 'cube') { orbit = 0; orbitShown = 0; }
       retarget();
     },
     setActive(index) { if (index !== active) { active = index; wake(); } },
     setZoom(index) { if (index !== zoomed) { zoomed = index; retarget(); } },
+    orbitCube(delta) {
+      orbit = Math.max(-CUBE_ORBIT_MAX, Math.min(CUBE_ORBIT_MAX, orbit + delta));
+      wake();
+    },
     setPointer(x, y) { pointer.set(Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))); wake(900); },
     pick(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
       // Les boîtes d'abord : le volume de clic de l'étagère passe devant elles.
-      const item = raycaster.intersectObjects(model.pickTargets(), true)[0];
+      // Puis le cube, sinon c'est le volume de l'étagère qui le couvre.
+      const item = raycaster.intersectObjects(model.pickTargets(), true)[0] ?? raycaster.intersectObject(cube.group, true)[0];
       const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, cube.group, model.group, poster, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
