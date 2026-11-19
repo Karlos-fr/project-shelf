@@ -1,0 +1,43 @@
+---
+// ============================================================================
+// RoomRoute — Page autonome « La chambre », pré-générée dans chaque langue
+// ----------------------------------------------------------------------------
+// Chambre de la fin des années 90 en 3D, à l'adresse /{langue}/chambre/. Elle est
+// pensée pour un ordinateur. Le HTML reste complet sans JavaScript : titre et liens.
+// ============================================================================
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import RoomPage from '../../components/RoomPage.tsx';
+import { loadSiteConfig } from '../../config/site.ts';
+import { loadPublishedCatalogue } from '../../data/published.ts';
+import { buildSeo } from '../../seo/model.ts';
+import { MESSAGES } from '../../i18n/messages.ts';
+import type { Locale } from '../../domain/locale.ts';
+
+export function getStaticPaths() {
+  return [{ params: { lang: 'en' } }, { params: { lang: 'fr' } }];
+}
+
+const locale = Astro.params.lang as Locale;
+const config = loadSiteConfig(process.env);
+const catalogue = await loadPublishedCatalogue();
+const home = buildSeo(config, { locale, projectId: null, categories: [], sort: 'updated', q: '' });
+// Même modèle que l'accueil, mais l'adresse canonique et les variantes pointent vers /chambre/.
+const root = config.base.endsWith('/') ? config.base : config.base + '/';
+function roomUrl(lang: Locale): string {
+  return new URL(root + lang + '/chambre/', config.origin + '/').href;
+}
+const seo = {
+  ...home,
+  title: MESSAGES[locale].roomPageTitle,
+  description: MESSAGES[locale].roomLead,
+  canonical: roomUrl(locale),
+  alternates: [
+    { lang: 'en' as const, href: roomUrl('en') },
+    { lang: 'fr' as const, href: roomUrl('fr') },
+    { lang: 'x-default' as const, href: roomUrl('en') },
+  ],
+};
+---
+<BaseLayout seo={seo}>
+  <RoomPage client:load config={config} summaries={catalogue.summaries} locale={locale} />
+</BaseLayout>

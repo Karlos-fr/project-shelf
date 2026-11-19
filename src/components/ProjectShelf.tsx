@@ -14,6 +14,7 @@ import { crossOriginFor } from '../media/ambilight.ts';
 import { useMediaCoordinator } from '../media/context.tsx';
 import { selectShelfItems } from '../shelf/shelf-items.ts';
 import type { ShelfScene } from '../shelf/shelf-scene.ts';
+import { CRASH_GRACE_MS, readCrashFlag, writeCrashFlag } from '../shelf/crash-guard.ts';
 
 type ProjectShelfProps = {
   projects: readonly ProjectSummary[];
@@ -33,20 +34,6 @@ type SceneState = 'idle' | 'loading' | 'ready' | 'failed';
 
 // Marque de session posée pendant le chargement de la scène et retirée une fois qu'elle tourne.
 const CRASH_FLAG = 'project-shelf:shelf-loading';
-const CRASH_GRACE_MS = 6000;
-
-function readCrashFlag(): boolean {
-  try { return window.sessionStorage.getItem(CRASH_FLAG) === '1'; } catch { return false; }
-}
-
-function writeCrashFlag(on: boolean): void {
-  try {
-    if (on) window.sessionStorage.setItem(CRASH_FLAG, '1');
-    else window.sessionStorage.removeItem(CRASH_FLAG);
-  } catch {
-    // Stockage bloqué (navigation privée stricte) : pas de garde-fou, la scène se charge quand même.
-  }
-}
 
 // ----------------------------------------------------------------------------
 // Rend la section de l'étagère, ou rien si aucun projet public n'a d'objet.
@@ -83,8 +70,8 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
       started = true;
       // Un chargement précédent n'a jamais abouti : le navigateur a sans doute fermé l'onglet
       // faute de mémoire. On reste sur la version HTML pour ne pas recharger en boucle.
-      if (readCrashFlag()) { setSceneState('failed'); return; }
-      writeCrashFlag(true);
+      if (readCrashFlag(CRASH_FLAG)) { setSceneState('failed'); return; }
+      writeCrashFlag(CRASH_FLAG, true);
       setSceneState('loading');
       const small = window.matchMedia('(max-width: 719px)').matches;
       const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -106,9 +93,9 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
           sceneRef.current = scene;
           setSceneState('ready');
           // Quelques secondes de rendu sans fermeture d'onglet suffisent à lever le doute.
-          clearFlag = window.setTimeout(() => writeCrashFlag(false), CRASH_GRACE_MS);
+          clearFlag = window.setTimeout(() => writeCrashFlag(CRASH_FLAG, false), CRASH_GRACE_MS);
         })
-        .catch(() => { writeCrashFlag(false); if (!disposed) setSceneState('failed'); });
+        .catch(() => { writeCrashFlag(CRASH_FLAG, false); if (!disposed) setSceneState('failed'); });
     }, { rootMargin: '300px 0px' });
     observer.observe(section);
     const onResize = () => sceneRef.current?.resize();
@@ -117,7 +104,7 @@ export default function ProjectShelf({ projects, route, base, suspended, onOpen 
       disposed = true;
       window.clearTimeout(clearFlag);
       // Un démontage normal prouve que l'onglet a survécu : la marque n'a plus lieu d'être.
-      if (started) writeCrashFlag(false);
+      if (started) writeCrashFlag(CRASH_FLAG, false);
       observer.disconnect();
       window.removeEventListener('resize', onResize);
       sceneRef.current?.dispose();

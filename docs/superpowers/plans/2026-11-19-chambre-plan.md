@@ -1,0 +1,155 @@
+# La chambre — plan
+
+> Date : 19 novembre 2026. Statut : **étape 1 faite** (pièce, mobilier, étagère, navigation par clic), étapes 2 à 5 à venir.
+> Cible : **desktop uniquement**. L'iPhone et le mobile sont mis de côté pour cette version.
+
+## 1. Idée
+
+On propose une troisième version du site, à côté de la vitrine (`/{langue}/`) et de l'étagère seule (`/{langue}/shelf/`). C'est une petite chambre d'ado de la fin des années 90 et du début des années 2000, en vraie 3D temps réel, avec un bureau et un PC de l'époque.
+
+- On ne se promène pas dans la pièce. On **clique** pour déplacer la caméra entre des points de vue fixes.
+- Le **PC** est le cœur de l'expérience. On clique sur l'écran, la caméra zoome, puis on utilise un Windows XP interactif d'où l'on lance tous les projets.
+- L'**étagère** ne garde que les projets qui ont eu un **support physique** (boîtes, boîtiers).
+- Les murs portent des **posters**, et le bureau reçoit des **objets d'époque**.
+
+## 2. Adresse et intégration
+
+- Pages statiques `/fr/chambre/` et `/en/chambre/`, sur le modèle de `src/pages/[lang]/shelf.astro` : SEO, URL canonique et variantes de langue propres.
+- Nouveau composant de page `src/components/RoomPage.tsx`, sur le modèle de `ShelfPage.tsx`, avec un en-tête « retour à la vitrine » et un lien vers l'autre langue.
+- Code de scène dans un nouveau dossier `src/room/`. On réutilise ce qui existe dans `src/shelf/` : matériau bois en TSL, boîtes à jaquettes, plaques en laiton, chargement asynchrone, garde-fou anti-crash.
+- Les assets vont dans `content/room/`, servis sous `/room/` comme `content/shelf/`.
+- Sans JavaScript, la page reste utilisable : titre et liste HTML des liens vers les fiches projets.
+- Lien depuis le README du dépôt, à côté de ceux de la vitrine et de l'étagère.
+- Déploiement sur GitHub Pages comme aujourd'hui, **uniquement avec l'accord explicite de l'auteur**.
+
+## 3. La pièce (3D)
+
+### Mobilier
+- **Bureau en pin.** Bois clair et blond, nœuds visibles, vernis légèrement jauni par le temps.
+- **Chaise paysanne en hêtre** (bois plus fin et régulier que le pin), **assise paillée**.
+- **L'étagère en noyer** existante, déplacée contre un mur.
+- Murs, sol et plafond sobres : le décor doit mettre en valeur les objets, pas rivaliser avec eux.
+
+### Le PC de l'époque
+- **Tour beige**, plastique légèrement jauni. Façade avec lecteur de disquette 3,5″, lecteur CD-ROM, voyants d'alimentation et de disque dur.
+- Le **bouton d'alimentation en façade est cliquable** (voir §5).
+- **Écran CRT** beige, dalle bombée, reflet du verre.
+- **Clavier filaire** beige, touches en série, et **souris à boule filaire** sur un tapis.
+- Les câbles sont visibles entre les périphériques et la tour.
+
+### Objets d'époque (ajoutés plus tard)
+Game Boy, Walkman rouge, disquettes, CD, magazines PC Team. La liste sera complétée par l'auteur.
+
+### Posters
+- Posters muraux d'esprit années 90. Le contenu est à définir ; une idée est de faire de fausses affiches d'époque pour les projets.
+
+### Fabrication des modèles
+- Formes simples (tour, CRT, clavier, bureau, chaise) **construites en code** dans Three.js, avec des matériaux PBR : plastique, bois, paille tressée.
+- Objets complexes (lampe, Walkman, Game Boy) : modèles CC0, ou modèles faits par l'auteur dans Blender (glTF).
+- **Textures** pin, hêtre, paille et murs : sources **CC0** en haute résolution (Poly Haven ou équivalent), comme le noyer de l'étagère.
+
+### Lumière et rendu
+- Même pile que l'étagère : Three.js r187, WebGPU avec repli WebGL, HDR d'ambiance, ombres douces.
+- La caméra ne bouge qu'entre des points fixes. On peut donc **précalculer une partie de l'éclairage** (occlusion ambiante, lumière de la pièce) pour un rendu plus riche et moins coûteux.
+- Lampe de bureau, et lumière de l'écran CRT qui éclaire le bureau.
+
+## 4. Navigation par clic
+
+- **Vues fixes** :
+  - vue d'ensemble ;
+  - bureau ;
+  - écran du PC ;
+  - étagère ;
+  - mur aux posters.
+- On clique sur une zone ou un objet pour aller à la vue correspondante, avec une transition de caméra douce.
+- `Échap` ou un bouton « retour » ramène à la vue précédente, puis à la vue d'ensemble.
+- Sur l'étagère, on garde les interactions actuelles (zoom sur une boîte, plaque, lien vers la fiche).
+- Le clavier suffit pour naviguer, avec focus visible et libellés accessibles.
+
+## 5. Le PC : allumage et extinction
+
+### Extinction (clic sur le bouton en façade, PC allumé)
+1. Écran « Windows s'arrête… ».
+2. Effet d'extinction du CRT : l'image s'écrase en une ligne horizontale, puis en un point lumineux, puis noir.
+3. Le voyant d'alimentation de la tour s'éteint.
+
+### Allumage (clic sur le bouton, PC éteint)
+1. Le voyant s'allume, le tube chauffe et l'image apparaît progressivement.
+2. **Écran POST de BIOS d'époque** :
+   - logo et nom du BIOS ;
+   - CPU détecté ;
+   - **test mémoire qui compte** ;
+   - détection des disques IDE (maître/esclave) ;
+   - « Press DEL to enter SETUP ».
+3. Écran de démarrage **Windows XP** avec la barre de progression animée.
+4. Écran d'accueil.
+5. Bureau.
+
+- Un clic ou une touche permet de passer la séquence.
+- L'état allumé/éteint est gardé pendant la visite.
+
+## 6. Windows XP (interface HTML)
+
+### Principe technique
+Quand on clique sur l'écran, la caméra zoome jusqu'à ce que l'écran remplisse la vue. Ensuite, une **vraie interface HTML/React prend le relais en plein écran**, avec un effet CRT en CSS (lignes de balayage, léger bombé, cadre beige). En sortant, on revient à la 3D.
+
+Ce choix garde un texte net, des interactions natives (clavier, focus, accessibilité) et une interface facile à faire évoluer. Les deux autres approches ont été écartées :
+- dessiner Windows dans une texture 3D et convertir les clics en coordonnées sur l'écran ;
+- superposer une page HTML en 3D CSS.
+
+### Apparence
+- **Reproduction fidèle de l'interface Windows XP** (thème Luna) : barre des tâches bleue, bouton « Démarrer » vert, fenêtres aux coins arrondis, fond d'écran, icônes.
+- On s'inspire des clones open source existants, par exemple **XP.css** (paquet npm, licence MIT) pour le style des fenêtres et **winXP** pour le menu Démarrer et l'explorateur.
+- **Provenance à documenter.** Le code des clones est sous licence libre, mais les images reprises de Windows (fond d'écran, icônes, logos, sons) appartiennent à Microsoft. C'est un choix assumé par l'auteur pour ce projet personnel non commercial. Chaque élément repris sera listé dans un fichier de provenance.
+
+### Contenu
+- **Bureau** : un **raccourci par projet**. Le double-clic fait l'une de deux choses selon le projet :
+  - ouvrir une fenêtre façon **Lecteur Windows Media** avec la vidéo du projet ;
+  - **lancer le projet** dans une fenêtre façon **Internet Explorer** (iframe). Les sites qui refusent d'être intégrés s'ouvrent dans un nouvel onglet.
+- **Menu Démarrer** d'époque : projets, Poste de travail, Mes documents, « Arrêter l'ordinateur » (qui déclenche l'extinction du §5).
+- **Explorateur de fichiers** : Poste de travail, Mes documents, projets rangés par catégorie, vue en icônes ou en liste.
+- **Gestionnaire de fenêtres** : déplacer, réduire, agrandir et fermer les fenêtres, premier plan au clic, boutons dans la barre des tâches, horloge.
+- **Démineur** : le portage de l'auteur sera intégré **plus tard**, dans une fenêtre.
+
+### Données
+- On ajoute au catalogue (ou à une table dédiée, comme `SHELF_OBJECTS`) la **place de chaque projet** :
+  - **étagère** : support physique (`bigbox`, `case`) ;
+  - **bureau XP** : tous les projets, avec l'**action du raccourci** (`video` ou `launch`) et son icône.
+- Les écrans TV de l'étagère actuelle (Lactea, Proscenium) ne sont pas des supports physiques : ces projets passent sur le bureau XP.
+
+## 7. Étapes
+
+1. **La pièce brute.** ✅ Fait le 19 novembre 2026 (`src/room/room-scene.ts`, `src/components/RoomPage.tsx`).
+   - Murs, sol, bureau en pin, chaise en hêtre, étagère déplacée.
+   - Navigation par clic entre les vues fixes.
+   - Page `/fr/chambre/` et `/en/chambre/`.
+2. **Le PC et le passage à l'écran.**
+   - Tour, CRT, clavier, souris.
+   - Zoom sur l'écran, puis bureau XP en HTML : fond, icônes des projets, barre des tâches, menu Démarrer.
+3. **Les fenêtres.**
+   - Gestionnaire de fenêtres.
+   - Lecteur vidéo, navigateur (iframe), explorateur de fichiers.
+4. **Allumage et extinction.**
+   - Bouton en façade, extinction du CRT.
+   - POST du BIOS, démarrage de XP, écran d'accueil.
+5. **L'habillage.**
+   - Posters, objets d'époque (Game Boy, Walkman rouge, disquettes, CD, magazines PC Team).
+   - Éclairage précalculé, finitions.
+6. **Plus tard.**
+   - Démineur dans une fenêtre.
+   - Éventuelle version mobile.
+
+À chaque étape :
+- on lance `npm run verify` (vérification des types, tests unitaires, tests du build, tests e2e) ;
+- on vérifie dans le navigateur ;
+- on fait un commit ;
+- on ne déploie qu'avec l'accord de l'auteur.
+
+## 8. Points ouverts
+
+- Le contenu des posters.
+- La liste complète des objets d'époque, et les modèles 3D à fabriquer ou à trouver.
+- Pour chaque projet : raccourci vidéo ou lancement direct, et son icône.
+- Quels projets acceptent d'être affichés dans une iframe.
+- L'emplacement et la technologie du portage du Démineur.
+- Le BIOS à imiter (Award, AMI, Phoenix).

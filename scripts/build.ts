@@ -26,6 +26,8 @@ const PUBLISHED_PATH = join(GENERATED_ROOT, 'catalogue.json');
 const PUBLIC_DIR = join(GENERATED_ROOT, 'public');
 // Jaquettes, placage et HDRI de l'étagère 3D, servis sous /shelf/ hors fixtures.
 const SHELF_SOURCE = join(ROOT, 'content/shelf');
+// Textures de la chambre 3D (pin, hêtre, parquet, murs), servies sous /room/ hors fixtures.
+const ROOM_SOURCE = join(ROOT, 'content/room');
 // Répertoire de sortie Astro audité après chaque build réussi.
 const DIST_DIR = join(ROOT, 'dist');
 
@@ -94,7 +96,10 @@ async function stageGenerated(published: PublishedCatalogue, fixture: boolean): 
     await copyFile(source, target);
   }
   // Les fixtures n'ont pas d'objet d'étagère : leurs builds restent légers.
-  if (!fixture) await cp(SHELF_SOURCE, join(stagePublic, 'shelf'), { recursive: true });
+  if (!fixture) {
+    await cp(SHELF_SOURCE, join(stagePublic, 'shelf'), { recursive: true });
+    await cp(ROOM_SOURCE, join(stagePublic, 'room'), { recursive: true });
+  }
   await rm(PUBLIC_DIR, { recursive: true, force: true });
   await rm(PUBLISHED_PATH, { force: true });
   await rename(stagePublic, PUBLIC_DIR);
