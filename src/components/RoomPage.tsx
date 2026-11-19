@@ -16,6 +16,8 @@ import { crossOriginFor } from '../media/ambilight.ts';
 import { CRASH_GRACE_MS, readCrashFlag, writeCrashFlag } from '../shelf/crash-guard.ts';
 import { selectShelfItems } from '../shelf/shelf-items.ts';
 import type { RoomScene, RoomView, RoomZone } from '../room/room-scene.ts';
+import XpDesktop from '../xp/XpDesktop.tsx';
+import { XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
 
 export type RoomPageProps = {
   config: SiteConfig;
@@ -25,7 +27,10 @@ export type RoomPageProps = {
 
 type SceneState = 'loading' | 'ready' | 'failed';
 const CRASH_FLAG = 'project-shelf:room-loading';
-const VIEW_ORDER: readonly RoomView[] = ['overview', 'desk', 'shelf'];
+const VIEW_ORDER: readonly RoomView[] = ['overview', 'desk', 'screen', 'shelf'];
+// Le bouton d'alimentation mène au bureau tant que l'allumage n'existe pas.
+const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone);
+type ScreenRect = { left: number; top: number; width: number; height: number };
 
 // ----------------------------------------------------------------------------
 // Rend l'en-tête, la scène plein cadre avec ses commandes, puis l'index des projets.
@@ -48,7 +53,8 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
   const [hover, setHover] = useState<{ zone: RoomZone; x: number; y: number } | null>(null);
-  const labels: Record<RoomView, string> = { overview: messages.roomOverview, desk: messages.roomDesk, shelf: messages.roomShelf };
+  const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
+  const labels: Record<RoomView, string> = { overview: messages.roomOverview, desk: messages.roomDesk, screen: messages.roomScreen, shelf: messages.roomShelf };
 
   // Charge la scène dès l'hydratation : la chambre est tout le contenu de la page.
   useEffect(() => {
@@ -65,6 +71,14 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
         canvas, reducedMotion,
         onProgress: (fraction) => { if (!disposed) setProgress(Math.round(fraction * 100)); },
         roomBase: `${root}room/`,
+        pc: {
+          labels: XP_LABELS[locale],
+          asset: (name) => xpAsset(base, name),
+          projects: summaries.map((project) => {
+            const image = assetUrl(project.preview.poster, base);
+            return { label: project.name, image, crossOrigin: crossOriginFor(image) };
+          }),
+        },
         shelfBase: `${root}shelf/`,
         items: items.map(({ project, object }) => {
           const poster = assetUrl(project.preview.poster, base);
@@ -101,6 +115,21 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
   }, []);
   useEffect(() => { sceneRef.current?.setView(view); }, [view, sceneState]);
   useEffect(() => { sceneRef.current?.setActive(active); }, [active, sceneState]);
+  // Face à l'écran : l'interface HTML se cale sur la dalle dès que la caméra est arrivée.
+  useEffect(() => {
+    const scene = sceneRef.current;
+    if (scene === null || view !== 'screen') { setScreenRect(null); return; }
+    let frame = 0;
+    let last = '';
+    const follow = () => {
+      const rect = scene.screenRect();
+      const key = rect === null ? '' : [rect.left, rect.top, rect.width, rect.height].map((v) => v.toFixed(1)).join(',');
+      if (key !== last) { last = key; setScreenRect(rect); }
+      frame = window.requestAnimationFrame(follow);
+    };
+    follow();
+    return () => window.cancelAnimationFrame(frame);
+  }, [view, sceneState]);
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
   function goTo(next: RoomView): void {
@@ -122,6 +151,7 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
   }
   function back(): void {
     if (zoomed >= 0) zoomTo(-1);
+    else if (view === 'screen') goTo('desk');
     else if (view !== 'overview') goTo('overview');
   }
 
@@ -132,7 +162,7 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
     scene.setPointer(((event.clientX - rect.left) / rect.width) * 2 - 1, -(((event.clientY - rect.top) / rect.height) * 2 - 1));
     const hit = scene.pick(event.clientX, event.clientY);
     const onItem = view === 'shelf' && hit.index >= 0;
-    const toZone = hit.zone !== null && hit.zone !== view && !onItem ? hit.zone : null;
+    const toZone = hit.zone !== null && zoneView(hit.zone) !== view && !onItem ? hit.zone : null;
     event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : 'default';
     setHover(toZone === null ? null : { zone: toZone, x: event.clientX - rect.left, y: event.clientY - rect.top });
     if (onItem && zoomed < 0) setActive(hit.index);
@@ -147,7 +177,7 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
     if (scene === null) return;
     const hit = scene.pick(event.clientX, event.clientY);
     if (view === 'shelf' && hit.index >= 0) { zoomTo(hit.index === zoomed ? -1 : hit.index); return; }
-    if (hit.zone !== null && hit.zone !== view) { goTo(hit.zone); return; }
+    if (hit.zone !== null && zoneView(hit.zone) !== view) { goTo(zoneView(hit.zone)); return; }
     if (zoomed >= 0) zoomTo(-1);
   }
   function handleKeyDown(event: globalThis.KeyboardEvent): void {
@@ -163,6 +193,7 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
 
   const current = view === 'shelf' ? items[active] : undefined;
   const hint = view === 'shelf' ? messages.roomHintShelf : messages.roomHint;
+  const xp = XP_LABELS[locale];
   return (
     <div className="site-shell room-page">
       <header className="shelf-page__header">
@@ -185,8 +216,14 @@ export default function RoomPage({ config, summaries, locale }: RoomPageProps) {
               <span className="room__percent">{progress} %</span>
             </div>
           )}
-          {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{labels[hover.zone]}</span>}
-          {sceneState === 'ready' && (
+          {hover !== null && <span className="room__tip" style={{ left: hover.x, top: hover.y }}>{labels[zoneView(hover.zone)]}</span>}
+          {view === 'screen' && screenRect !== null && (
+            <div className="room__screen" style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})` }}>
+              <XpDesktop locale={locale} projects={summaries} base={base} onTurnOff={() => goTo('desk')} />
+            </div>
+          )}
+          {view === 'screen' && sceneState === 'ready' && <button type="button" className="room__exit" onClick={() => goTo('desk')}>{xp.exit}</button>}
+          {sceneState === 'ready' && view !== 'screen' && (
             <div className="room__hud">
               <nav className="room__views" aria-label={messages.roomViews}>
                 {VIEW_ORDER.map((name) => (

@@ -26,18 +26,21 @@ import { depthAwareBlend } from 'three/addons/tsl/display/depthAwareBlend.js';
 import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
+import { buildPc, SCREEN_H, SCREEN_W, type PcEnv } from './pc-model.ts';
 import { buildShelfModel, SHELF_DEPTH, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
-export type RoomView = 'overview' | 'desk' | 'shelf';
+export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen';
 // Zone cliquable : un meuble qui mène à une vue.
-export type RoomZone = 'desk' | 'shelf';
+export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power';
 export type RoomHit = { zone: RoomZone | null; index: number };
 
 export type RoomSceneOptions = {
   canvas: HTMLCanvasElement;
   // Projets de l'étagère : seulement ceux qui ont eu un support physique.
   items: readonly ShelfSceneItem[];
+  // Contenu du bureau façon XP peint sur l'écran 3D du PC.
+  pc: Pick<PcEnv, 'labels' | 'projects' | 'asset'>;
   // Préfixes des fichiers servis sous /room/ et /shelf/, base de déploiement incluse.
   roomBase: string;
   shelfBase: string;
@@ -55,6 +58,8 @@ export type RoomScene = {
   // Position du pointeur dans [-1, 1] sur chaque axe : léger effet de parallaxe.
   setPointer(x: number, y: number): void;
   pick(clientX: number, clientY: number): RoomHit;
+  // Rectangle de la dalle du CRT dans le canvas, en pixels CSS, une fois la caméra arrivée.
+  screenRect(): { left: number; top: number; width: number; height: number } | null;
   resize(): void;
   setRunning(running: boolean): void;
   dispose(): void;
@@ -81,7 +86,9 @@ const pose = (p: [number, number, number], t: [number, number, number], fov: num
   ({ position: new THREE.Vector3(...p), target: new THREE.Vector3(...t), fov });
 const VIEWS: Record<RoomView, Pose> = {
   overview: pose([1.5, 1.55, 1.6], [-0.55, 0.88, -0.85], 52),
-  desk: pose([-0.1, 1.32, -0.12], [-0.18, 0.8, -1.35], 44),
+  desk: pose([-0.12, 1.36, 0.02], [-0.16, 0.9, -1.3], 42),
+  // Calculée à la volée face à la dalle ; cette pose ne sert que de repli.
+  screen: pose([-0.1, 0.98, -0.5], [-0.1, 0.98, -1.2], 30),
   shelf: pose([0.05, SHELF.y + 0.16, SHELF.z], [SHELF.x, SHELF.y + 0.02, SHELF.z], 40),
 };
 
@@ -92,7 +99,7 @@ const VIEWS: Record<RoomView, Pose> = {
 export async function createRoomScene(options: RoomSceneOptions): Promise<RoomScene> {
   const { canvas, items, roomBase, shelfBase, reducedMotion } = options;
   // Poids de chaque étape : HDRI, trois jeux de textures, trois images par boîte, premier rendu.
-  const expected = 1 + 3 * 3 + items.length * 3 + 4;
+  const expected = 1 + 3 * 3 + items.length * 3 + 2 + 4;
   let done = 0;
   const report = (weight: number) => { done += weight; options.onProgress?.(Math.min(1, done / expected)); };
   const tick = <V>(weight: number) => (value: V): V => { report(weight); return value; };
@@ -264,6 +271,13 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   scene.add(chair);
   buildChair(chair);
 
+  // --------------------------------------------------------------- ordinateur
+  const pc = await buildPc({ keep, maxAniso, smudgeTex, ...options.pc });
+  pc.group.position.set(DESK.x, DESK.h, DESK.z);
+  pc.group.userData.zone = 'desk';
+  scene.add(pc.group);
+  report(2);
+
   // --------------------------------------------------------------- étagère
   const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, woodLook: { ...BEECH, coat: 0.3 }, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width);
   model.group.position.set(SHELF.x, SHELF.y, SHELF.z);
@@ -357,6 +371,17 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
         return { position: center.clone().addScaledVector(normal, 0.86).add(new THREE.Vector3(0, 0.05, 0)), target: center, fov: 34 };
       }
     }
+    if (view === 'screen') {
+      // Recul tel que la dalle remplisse 84 % de la hauteur ou de la largeur du cadre.
+      scene.updateMatrixWorld(true);
+      const center = pc.screenCenter();
+      const normal = pc.screenNormal();
+      const fov = 30;
+      const half = Math.tan(THREE.MathUtils.degToRad(fov / 2));
+      const fill = 0.84;
+      const distance = Math.max(SCREEN_H / 2 / fill / half, SCREEN_W / 2 / fill / (half * camera.aspect));
+      return { position: center.clone().addScaledVector(normal, distance), target: center, fov };
+    }
     return clonePose(VIEWS[view]);
   }
   function retarget(): void {
@@ -372,6 +397,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     renderer.setSize(rect.width, rect.height, false);
     camera.aspect = rect.width / rect.height;
     camera.updateProjectionMatrix();
+    // Face à l'écran, le cadrage dépend du format : il se recale sans transition.
+    if (view === 'screen' && progress >= 1) { goal = goalPose(); from = clonePose(goal); }
     wake();
   }
 
@@ -396,7 +423,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     scratch.subVectors(current.target, current.position).normalize();
     right.crossVectors(scratch, THREE.Object3D.DEFAULT_UP).normalize();
     up.crossVectors(right, scratch).normalize();
-    const amount = zoomed >= 0 ? 0.012 : 0.05;
+    const amount = view === 'screen' ? 0 : zoomed >= 0 ? 0.012 : 0.05;
     camera.position.copy(current.position).addScaledVector(right, sway.x * amount).addScaledVector(up, sway.y * amount * 0.5);
     camera.lookAt(current.target);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
@@ -499,9 +526,18 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       const rect = canvas.getBoundingClientRect();
       ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
       raycaster.setFromCamera(ndc, camera);
-      const hit = raycaster.intersectObjects([desk, chair, model.group, room], true)[0];
+      const hit = raycaster.intersectObjects([pc.group, desk, chair, model.group, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
+    },
+    screenRect() {
+      if (view !== 'screen' || progress < 1) return null;
+      const rect = canvas.getBoundingClientRect();
+      const points = pc.screenCorners().map((corner) => corner.project(camera));
+      const xs = points.map((p) => (p.x + 1) / 2 * rect.width);
+      const ys = points.map((p) => (1 - p.y) / 2 * rect.height);
+      const left = Math.min(...xs); const top = Math.min(...ys);
+      return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
     },
     resize,
     setRunning(next) {

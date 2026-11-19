@@ -385,3 +385,70 @@ main { padding: .25rem 0 3rem; }
 .room__failed { margin: 1rem 0; color: var(--muted); }
 .room__index-section { margin-top: 2rem; }
 .room__index-section h2 { margin: 0; font-size: 1rem; font-weight: 650; }
+
+/* ---------------------------------------------------------------- Écran du PC : bureau façon Windows XP */
+.room__screen { position: absolute; transform-origin: 0 0; border-radius: 14px / 12px; overflow: hidden; animation: room-screen-in .35s ease-out; }
+.room__screen::after { content: ""; position: absolute; inset: 0; z-index: 50; pointer-events: none;
+  background: repeating-linear-gradient(to bottom, rgb(0 0 0 / .07) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 62%, rgb(0 0 0 / .32) 100%);
+  box-shadow: inset 0 0 40px rgb(0 0 0 / .45); }
+@keyframes room-screen-in { from { opacity: 0; filter: brightness(1.6) blur(2px); } to { opacity: 1; filter: none; } }
+.room__exit { position: absolute; top: .9rem; left: clamp(1rem, 4vw, 2.5rem); min-height: 2.25rem; padding: 0 .95rem; border: 1px solid rgb(255 255 255 / .28); border-radius: 99px; background: rgb(10 11 13 / .55); color: #f4efe6; font: inherit; font-size: .85rem; cursor: pointer; }
+.room__exit:hover { border-color: rgb(255 255 255 / .6); }
+
+.xp { position: relative; overflow: hidden; background-size: cover; color: #000; font: 11px Tahoma, Verdana, "Segoe UI", sans-serif; user-select: none; outline: none; cursor: default; }
+.xp button { font: inherit; }
+.xp__icons { position: absolute; inset: 6px auto 36px 4px; display: grid; grid-auto-flow: column; grid-template-rows: repeat(9, 72px); grid-auto-columns: 78px; gap: 2px 4px; }
+.xp__recycle { position: absolute; right: 6px; bottom: 38px; width: 78px; }
+.xp-icon { display: flex; flex-direction: column; align-items: center; gap: 3px; width: 78px; padding: 2px 0; border: 0; background: none; color: #fff; cursor: default; }
+.xp-icon__image { position: relative; display: block; width: 32px; height: 32px; }
+.xp-icon__image img { width: 32px; height: 32px; }
+.xp-icon__image img.is-poster { object-fit: cover; border-radius: 3px; box-shadow: 0 1px 2px rgb(0 0 0 / .45); }
+.xp-icon__arrow { position: absolute; left: 0; bottom: 0; width: 11px !important; height: 11px !important; }
+.xp-icon__label { max-width: 76px; padding: 0 2px; line-height: 13px; text-align: center; text-shadow: 1px 1px 1px #000; overflow-wrap: anywhere; }
+.xp-icon[aria-pressed="true"] .xp-icon__label { background: #316ac5; text-shadow: none; outline: 1px dotted #fff; }
+.xp-icon[aria-pressed="true"] .xp-icon__image img { filter: brightness(.7) sepia(1) hue-rotate(185deg) saturate(3); }
+.xp-icon:focus-visible { outline: none; }
+.xp-icon:focus-visible .xp-icon__label { outline: 1px dotted #fff; }
+
+.xp-taskbar { position: absolute; inset: auto 0 0; display: flex; height: 30px; background: linear-gradient(to bottom, #3168d5 0, #4993e6 3px, #2157d7 8px, #2663e0 70%, #1941a5 100%); }
+.xp-start { display: flex; align-items: center; gap: 4px; height: 30px; padding: 0 22px 0 8px; border: 0; border-radius: 0 10px 10px 0; background: linear-gradient(to bottom, #5eac56 0, #3c9d34 20%, #379331 80%, #2b7d23 100%); box-shadow: inset -2px 0 3px rgb(0 0 0 / .25), inset 0 1px 1px rgb(255 255 255 / .35); color: #fff; cursor: pointer; }
+.xp-start img { width: auto; height: 21px; filter: drop-shadow(1px 1px 0 rgb(0 0 0 / .35)); }
+.xp-start span { font: italic bold 17px "Trebuchet MS", "Franklin Gothic Medium", sans-serif; text-shadow: 1px 1px 1px rgb(0 0 0 / .5); }
+.xp-start:hover { filter: brightness(1.08); }
+.xp-start[aria-expanded="true"] { background: linear-gradient(to bottom, #2f7d23, #3c9d34); }
+.xp-taskbar__tasks { flex: 1; }
+.xp-tray { display: flex; align-items: center; padding: 0 14px 0 16px; border-left: 1px solid #0b5bb0; background: linear-gradient(to bottom, #1290e8 0, #19b9f3 3px, #0f8ce6 9px, #0d73d0 100%); box-shadow: inset 1px 0 1px rgb(255 255 255 / .25); color: #fff; }
+
+/* Menu Démarrer : cotes du menu Luna (380 px, deux colonnes de 190 px), reprises du clone winXP. */
+.xp-start-menu { position: absolute; left: 0; bottom: 30px; z-index: 20; display: flex; flex-direction: column; width: 380px; overflow: hidden; border-radius: 5px 5px 0 0; background: #4282d6; font-size: 11px; line-height: 14px; box-shadow: 2px 2px 6px rgb(0 0 0 / .45); }
+.xp-start-menu__user { position: relative; display: flex; align-items: center; height: 54px; padding: 6px 5px 5px; border-radius: 5px 5px 0 0; color: #fff; overflow: hidden;
+  background: linear-gradient(to bottom, #1868ce 0%, #0e60cb 12%, #0e60cb 20%, #1164cf 32%, #1667cf 33%, #1b6cd3 47%, #1e70d9 54%, #2476dc 60%, #297ae0 65%, #3482e3 77%, #3786e5 79%, #428ee9 90%, #4791eb 100%); }
+.xp-start-menu__user::before { content: ""; position: absolute; top: 1px; left: 0; width: 100%; height: 3px; box-shadow: inset 0 -1px 1px #0e60cb;
+  background: linear-gradient(to right, transparent 0, rgb(255 255 255 / .3) 1%, rgb(255 255 255 / .5) 2%, rgb(255 255 255 / .5) 95%, rgb(255 255 255 / .3) 98%, rgb(255 255 255 / .2) 99%, transparent 100%); }
+.xp-start-menu__user img { width: 42px; height: 42px; margin-right: 5px; border: 2px solid rgb(222 222 222 / .8); border-radius: 3px; }
+.xp-start-menu__user strong { font-size: 14px; font-weight: 700; text-shadow: 1px 1px rgb(0 0 0 / .7); }
+.xp-start-menu__body { position: relative; display: flex; margin: 0 2px; border-top: 1px solid #385de7; box-shadow: 0 1px #385de7; }
+.xp-start-menu__body::before { content: ""; position: absolute; inset: 0 0 auto; height: 2px; background: linear-gradient(to right, transparent 0%, #da884a 50%, transparent 100%); }
+.xp-start-menu ul { margin: 0; list-style: none; }
+.xp-start-menu__programs { display: flex; flex-direction: column; width: 190px; padding: 6px 5px 0; background: #fff; }
+.xp-start-menu__places { width: 190px; padding: 6px 5px 5px; border-left: 1px solid #3a3aff5e; background: #cbe3ff; color: #00136b; }
+.xp-start-menu li button { display: flex; align-items: center; width: 100%; margin-bottom: 4px; padding: 1px; border: 0; background: none; color: inherit; text-align: left; cursor: pointer; }
+.xp-start-menu__programs li button { height: 34px; color: #000; }
+.xp-start-menu__places li button { height: 26px; line-height: 13px; }
+.xp-start-menu__programs img { width: 30px; height: 30px; margin-right: 3px; }
+.xp-start-menu__places img { width: 22px; height: 22px; margin-right: 3px; }
+.xp-start-menu img.is-poster { object-fit: cover; border-radius: 2px; }
+.xp-start-menu__programs li:nth-child(-n + 2) span { font-weight: 700; }
+.xp-start-menu li button:not(:disabled):hover, .xp-start-menu li button:focus-visible { background: #2f71cd; color: #fff; outline: none; }
+.xp-start-menu li button:disabled { color: inherit; cursor: default; }
+.xp-start-menu__all-rule { margin-top: auto; }
+.xp-start-menu__all button { justify-content: center; height: 24px !important; font-weight: 700; }
+.xp-start-menu__all img { width: 18px; height: 18px; margin: 0 0 0 6px; }
+.xp-start-menu__rule { height: 7.5px; border-top: 3px solid transparent; border-bottom: 3px solid transparent; background: linear-gradient(to right, transparent 0%, rgb(0 0 0 / .1) 50%, transparent 100%); background-clip: content-box; }
+.xp-start-menu__places .xp-start-menu__rule { background: linear-gradient(to right, transparent 0%, #87b3e2b5 50%, transparent 100%); background-clip: content-box; }
+.xp-start-menu__footer { display: flex; align-items: center; justify-content: flex-end; height: 36px; color: #fff;
+  background: linear-gradient(to bottom, #4282d6 0%, #3b85e0 3%, #418ae3 5%, #418ae3 17%, #3c87e2 21%, #3786e4 26%, #3482e3 29%, #2e7ee1 39%, #2374df 49%, #2072db 57%, #196edb 62%, #176bd8 72%, #1468d5 75%, #1165d2 83%, #0f61cb 88%); }
+.xp-start-menu__footer button { display: flex; align-items: center; margin-right: 10px; padding: 3px; border: 0; background: none; color: #fff; cursor: pointer; }
+.xp-start-menu__footer button:not(:disabled):hover { background: rgb(60 80 210 / .5); }
+.xp-start-menu__footer button:disabled { cursor: default; }
+.xp-start-menu__footer img { width: 22px; height: 22px; margin-right: 2px; border-radius: 3px; }

@@ -1,6 +1,6 @@
 # La chambre — plan
 
-> Date : 19 novembre 2026. Statut : **étape 1 faite** (pièce, mobilier, étagère, navigation par clic), étapes 2 à 5 à venir.
+> Date : 19 novembre 2026. Statut : **étapes 1 et 2 faites** (pièce, mobilier, étagère, navigation ; PC et bureau XP), étapes 3 à 5 à venir.
 > Cible : **desktop uniquement**. L'iPhone et le mobile sont mis de côté pour cette version.
 
 ## 1. Idée
@@ -123,7 +123,7 @@ Ce choix garde un texte net, des interactions natives (clavier, focus, accessibi
    - Murs, sol, bureau en pin, chaise en hêtre, étagère déplacée.
    - Navigation par clic entre les vues fixes.
    - Page `/fr/chambre/` et `/en/chambre/`.
-2. **Le PC et le passage à l'écran.**
+2. **Le PC et le passage à l'écran.** ✅ Fait le 19 novembre 2026 (src/room/pc-model.ts, src/xp/XpDesktop.tsx). Fond Bliss et icônes d'origine de XP (provenance : docs/xp-assets.md) ; un double-clic ouvre pour l'instant la fiche du projet dans un nouvel onglet.
    - Tour, CRT, clavier, souris.
    - Zoom sur l'écran, puis bureau XP en HTML : fond, icônes des projets, barre des tâches, menu Démarrer.
 3. **Les fenêtres.**
