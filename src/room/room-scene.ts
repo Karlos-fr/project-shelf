@@ -28,6 +28,7 @@ import { bloom } from 'three/addons/tsl/display/BloomNode.js';
 import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
+import { buildMagazineStack } from './magazines.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
@@ -270,6 +271,12 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     const knob = add(desk, new THREE.LatheGeometry(knobProfile(), 24), knobMaterial, cx, y, dd / 2 - 0.019);
     knob.rotation.x = Math.PI / 2;
   }
+
+  // Pile de magazines d'époque au coin droit du bureau, derrière le tapis de souris.
+  const magazines = await buildMagazineStack(keep, roomBase, maxAniso);
+  magazines.position.set(0.5, dh, -0.15);
+  magazines.rotation.y = -0.12;
+  desk.add(magazines);
 
   // --------------------------------------------------------------- chaise paysanne
   const chair = new THREE.Group();

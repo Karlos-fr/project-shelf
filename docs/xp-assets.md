@@ -55,3 +55,7 @@ Les cotes et dégradés des fenêtres Luna (barre de titre, boutons Réduire, Ag
 `content/room/poster-i-want-to-believe.jpg` est l'image produit de l'affiche officielle « The X-Files - I Want To Believe » (Pyramid Posters, 61 × 91,5 cm) publiée par Europosters (https://www.europosters.fr/affiches-et-posters/the-x-files-i-want-to-believe-v30002), en 473 × 709, la plus grande taille trouvée. Cette affiche reprend la photo d'ovni prise par Billy Meier en Suisse en 1975, utilisée pour le poster du bureau de Mulder. L'image appartient à ses ayants droit (Fox, Pyramid Posters, ayants droit de la photo) ; l'auteur assume ce choix pour ce projet personnel non commercial.
 
 Une première version prise sur Flickr (« I want to believe » par mat-) a été écartée : c'est une version redessinée, pas l'original.
+
+## Magazines de la chambre
+
+Les couvertures de `content/room/mags/` (PC Team n°53, 57, 60 ; Casus Belli n°121, 122) viennent des scans publiés par abandonware-magazines.org (https://www.abandonware-magazines.org), réduites à 1400 px de haut. Elles appartiennent à leurs éditeurs ; l'auteur assume ce choix pour ce projet personnel non commercial.
