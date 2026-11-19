@@ -63,8 +63,9 @@ export type PlacedItem = {
   rest: { x: number; z: number; ry: number };
   isTV: boolean;
   tv?: TVScreen;
-  plaque: THREE.Mesh;
-  plaqueMaterial: THREE.MeshPhysicalMaterial;
+  // Plaque en laiton sous l'objet, absente quand le meuble est fourni par la scène.
+  plaque?: THREE.Mesh;
+  plaqueMaterial?: THREE.MeshPhysicalMaterial;
 };
 
 export type ShelfModel = {
@@ -84,7 +85,11 @@ export type ShelfModel = {
 // Construit le meuble et ses objets. width est la largeur intérieure, en mètres.
 // Effets de bord : crée des éléments vidéo hors DOM pour les écrans.
 // ----------------------------------------------------------------------------
-export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneItem[], width = 2.0): Promise<ShelfModel> {
+// options.furniture : faux pour ne poser que les objets (la scène fournit son propre meuble).
+// options.plaques : faux pour ne pas visser de plaque en laiton sous chaque objet.
+export type ShelfModelOptions = { furniture?: boolean; plaques?: boolean };
+
+export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneItem[], width = 2.0, options: ShelfModelOptions = {}): Promise<ShelfModel> {
   const { keep, assetBase, lite, maxAniso, wood: woodSet, woodLook, dustTex, smudgeTex } = env;
   const W = width;
   const group = new THREE.Group();
@@ -92,46 +97,49 @@ export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneI
     keep(woodNodeMaterial(woodSet, dustTex, { ru, rv, rotate, coat, ox, oy, ...woodLook, ...(woodLook?.coat === undefined ? {} : { coat: Math.min(coat, woodLook.coat) }) }));
 
   // --------------------------------------------------------------- meuble
-  const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
-    const mesh = new THREE.Mesh(keep(geometry), material);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = mesh.receiveShadow = true;
-    group.add(mesh);
-    return mesh;
-  };
-  const board = (w: number, h: number, d: number, material: THREE.Material, x: number, y: number, z: number, radius = 0.006) =>
-    add(new RoundedBoxGeometry(w, h, d, 4, radius), material, x, y, z);
-  const molding = (profile: THREE.Shape, length: number, material: THREE.Material, x: number, y: number, z: number) => {
-    const geometry = new THREE.ExtrudeGeometry(profile, { depth: length, bevelEnabled: false, curveSegments: 18 });
-    geometry.rotateY(-Math.PI / 2);
-    geometry.translate(length / 2, 0, 0);
-    geometry.computeVertexNormals();
-    return add(geometry, material, x, y, z);
-  };
-  const shelfWood = (seed: number) => wood(0.6 * W / 2, 2.4, true, 0.22, seed * 0.37, seed * 0.11);
-  const lowY = -H - T / 2 - 0.03;
-  for (const [seed, y] of [[1, -T / 2], [2, lowY]] as const) {
-    board(W, T, D - 0.012, shelfWood(seed), 0, y, -0.006, 0.004);
-    molding(bullnose(T, 0.016), W, shelfWood(seed + 3), 0, y - T / 2, D / 2 - 0.012);
-  }
-  board(W + 2 * T + 0.02, T, D + 0.01, shelfWood(7), 0, H + T / 2, 0.005, 0.004);
-  molding(cornice(), W + 2 * T + 0.07, shelfWood(8), 0, H + T, D / 2 + 0.005);
-  // Montants : du dessus jusque sous la tablette basse.
-  const sideTop = H + T;
-  const sideH = sideTop - SHELF_BOTTOM;
-  for (const side of [-1, 1]) {
-    board(T, sideH, D, wood(0.3, 1.2, false, 0.15, side * 0.2), side * (W / 2 + T / 2), SHELF_BOTTOM + sideH / 2, 0, 0.004);
-    board(0.05, sideH + 0.02, 0.022, wood(0.12, 1.4, false, 0.18, side * 0.31, 0.2), side * (W / 2 + T / 2 - 0.004), SHELF_BOTTOM + sideH / 2, D / 2 + 0.006, 0.006);
-  }
-  // Bandeau sous la tablette basse.
-  board(W, 0.04, 0.02, wood(1.4 * W / 2, 0.12, true, 0.15, 0.5), 0, lowY - T / 2 - 0.02, D / 2 - 0.03, 0.004);
-  // Fond en lames verticales à rainures en V, chacune avec son veinage.
-  const slats = Math.max(4, Math.round(17 * W / 2));
-  const backH = H + T - (lowY - T / 2) + 0.01;
-  for (let i = 0; i < slats; i += 1) {
-    const lw = W / slats;
-    board(lw - 0.003, backH, 0.012, wood(0.18, 1.2, false, 0.1, (i * 0.618) % 1, (i * 0.37) % 1),
-      -W / 2 + lw * (i + 0.5), lowY - T / 2 + backH / 2 - 0.005, -D / 2 - 0.006 + ((i * 7) % 3) * 0.0006, 0.0025);
+  if (options.furniture !== false) {
+    const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
+      const mesh = new THREE.Mesh(keep(geometry), material);
+      mesh.position.set(x, y, z);
+      mesh.castShadow = mesh.receiveShadow = true;
+      group.add(mesh);
+      return mesh;
+    };
+    const board = (w: number, h: number, d: number, material: THREE.Material, x: number, y: number, z: number, radius = 0.006) =>
+      add(new RoundedBoxGeometry(w, h, d, 4, radius), material, x, y, z);
+    const molding = (profile: THREE.Shape, length: number, material: THREE.Material, x: number, y: number, z: number) => {
+      const geometry = new THREE.ExtrudeGeometry(profile, { depth: length, bevelEnabled: false, curveSegments: 18 });
+      geometry.rotateY(-Math.PI / 2);
+      geometry.translate(length / 2, 0, 0);
+      geometry.computeVertexNormals();
+      return add(geometry, material, x, y, z);
+    };
+    const shelfWood = (seed: number) => wood(0.6 * W / 2, 2.4, true, 0.22, seed * 0.37, seed * 0.11);
+    const lowY = -H - T / 2 - 0.03;
+    for (const [seed, y] of [[1, -T / 2], [2, lowY]] as const) {
+      board(W, T, D - 0.012, shelfWood(seed), 0, y, -0.006, 0.004);
+      molding(bullnose(T, 0.016), W, shelfWood(seed + 3), 0, y - T / 2, D / 2 - 0.012);
+    }
+    board(W + 2 * T + 0.02, T, D + 0.01, shelfWood(7), 0, H + T / 2, 0.005, 0.004);
+    molding(cornice(), W + 2 * T + 0.07, shelfWood(8), 0, H + T, D / 2 + 0.005);
+    // Montants : du dessus jusque sous la tablette basse.
+    const sideTop = H + T;
+    const sideH = sideTop - SHELF_BOTTOM;
+    for (const side of [-1, 1]) {
+      board(T, sideH, D, wood(0.3, 1.2, false, 0.15, side * 0.2), side * (W / 2 + T / 2), SHELF_BOTTOM + sideH / 2, 0, 0.004);
+      board(0.05, sideH + 0.02, 0.022, wood(0.12, 1.4, false, 0.18, side * 0.31, 0.2), side * (W / 2 + T / 2 - 0.004), SHELF_BOTTOM + sideH / 2, D / 2 + 0.006, 0.006);
+    }
+    // Bandeau sous la tablette basse.
+    board(W, 0.04, 0.02, wood(1.4 * W / 2, 0.12, true, 0.15, 0.5), 0, lowY - T / 2 - 0.02, D / 2 - 0.03, 0.004);
+    // Fond en lames verticales à rainures en V, chacune avec son veinage.
+    const slats = Math.max(4, Math.round(17 * W / 2));
+    const backH = H + T - (lowY - T / 2) + 0.01;
+    for (let i = 0; i < slats; i += 1) {
+      const lw = W / slats;
+      board(lw - 0.003, backH, 0.012, wood(0.18, 1.2, false, 0.1, (i * 0.618) % 1, (i * 0.37) % 1),
+        -W / 2 + lw * (i + 0.5), lowY - T / 2 + backH / 2 - 0.005, -D / 2 - 0.006 + ((i * 7) % 3) * 0.0006, 0.0025);
+    }
+
   }
 
   // --------------------------------------------------------------- objets
@@ -154,8 +162,8 @@ export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneI
     root.rotation.y = restRy;
     root.traverse((node) => { node.userData.index = index; });
     group.add(root);
-    const { plaque, material } = makePlaque(item, index, slots[index] ?? 0);
-    placed.push({ root, rest: { x: slots[index] ?? 0, z: restZ, ry: restRy }, isTV, tv, plaque, plaqueMaterial: material });
+    const plaque = options.plaques === false ? undefined : makePlaque(item, index, slots[index] ?? 0);
+    placed.push({ root, rest: { x: slots[index] ?? 0, z: restZ, ry: restRy }, isTV, tv, plaque: plaque?.plaque, plaqueMaterial: plaque?.material });
     env.onItem?.();
   }
 
@@ -308,7 +316,7 @@ export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneI
           if (item.tv.playing) { item.tv.draw(); busy = true; }
           item.tv.spill.intensity = damp(item.tv.spill.intensity, on ? 0.5 : 0.12, 4, dt);
         }
-        item.plaqueMaterial.emissiveIntensity = damp(item.plaqueMaterial.emissiveIntensity, on ? 0.12 : 0, 6, dt);
+        if (item.plaqueMaterial !== undefined) item.plaqueMaterial.emissiveIntensity = damp(item.plaqueMaterial.emissiveIntensity, on ? 0.12 : 0, 6, dt);
       });
       return busy;
     },
@@ -332,7 +340,7 @@ export async function buildShelfModel(env: ShelfEnv, items: readonly ShelfSceneI
       tv.showPoster();
     },
     pickTargets() {
-      return [...placed.map((item) => item.root), ...placed.map((item) => item.plaque)];
+      return [...placed.map((item) => item.root), ...placed.flatMap((item) => (item.plaque === undefined ? [] : [item.plaque]))];
     },
     disposeVideos() {
       for (const item of placed) {

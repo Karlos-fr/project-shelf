@@ -27,7 +27,7 @@ On propose une troisième version du site, à côté de la vitrine (`/{langue}/`
 ### Mobilier
 - **Bureau en hêtre clair** (d'abord prévu en pin, éclairci à la demande de l'auteur : les meubles de l'époque étaient clairs). L'étagère de la chambre passe aussi en hêtre ; l'étagère seule reste en noyer.
 - **Chaise paysanne en hêtre** (bois plus fin et régulier que le pin), **assise paillée**.
-- **L'étagère en noyer** existante, déplacée contre un mur.
+- **Étagère sur pieds en pin brut à lattes** (src/room/pine-rack.ts), posée au sol contre le mur de gauche, 90 × 30 × 172 cm : les boîtes sont au 4e niveau, sans plaque. L'étagère seule (/shelf/) garde son meuble en noyer.
 - Murs, sol et plafond sobres : le décor doit mettre en valeur les objets, pas rivaliser avec eux.
 
 ### Le PC de l'époque
