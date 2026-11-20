@@ -19,6 +19,12 @@ describe('buildXpCatalog', () => {
     expect(apps['with-demo']).toMatchObject({ kind: 'browser', url: 'https://demo.example.test/' });
   });
 
+  it('ouvre le Démineur dans sa propre fenêtre, sans navigateur', () => {
+    const project = withId(publicProjectFixture(), 'minesweeper-infinite', { links: [{ type: 'demo', url: 'https://demo.example.test/' }] });
+    const { apps } = buildXpCatalog([project], fixtureCategories, 'fr', '/');
+    expect(apps['minesweeper-infinite']).toMatchObject({ kind: 'window', url: 'https://demo.example.test/' });
+  });
+
   it('passe la vidéo au Lecteur Windows Media quand il n’y a pas de démo', () => {
     const project = withId(mediaProject(), 'with-video', { links: [] });
     const { apps } = buildXpCatalog([project], fixtureCategories, 'fr', '/shelf/');

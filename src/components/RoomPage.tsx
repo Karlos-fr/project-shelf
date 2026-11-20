@@ -71,7 +71,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [gpu, setGpu] = useState('');
   const [noWebGpu, setNoWebGpu] = useState(false);
   const [view, setView] = useState<RoomView>('overview');
-  const dragRef = useRef<{ x: number; moved: number } | null>(null);
+  // Glissé en cours : orbite autour du cube ou de l'île, ou, au doigt, regard dans les autres vues.
+  const dragRef = useRef<{ x: number; y: number; moved: number; look: boolean } | null>(null);
   const draggedRef = useRef(false);
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
@@ -172,6 +173,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
   function goTo(next: RoomView): void {
+    sceneRef.current?.setPointer(0, 0);
     setView(next);
     setZoomed(-1);
     setActive(-1);
@@ -195,46 +197,61 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   function back(): void {
     if (zoomed >= 0) zoomTo(-1);
     else if (view === 'screen') goTo('desk');
-    else if (view === 'cube') goTo('shelf');
+    else if (view === 'cube' || view === 'lego') goTo('shelf');
     else if (view !== 'overview') goTo('overview');
   }
 
-  // Vue du cube : un glissé horizontal fait tourner la caméra, et le clic qui le termine est ignoré.
+  // Vues du cube et de l'île : un glissé horizontal fait tourner la caméra autour de l'objet.
+  // Au doigt, dans les autres vues, le glissé oriente le regard comme la souris sur ordinateur.
+  // Le clic qui termine un glissé est ignoré.
+  const orbiting = view === 'cube' || view === 'lego';
   function handlePointerDown(event: PointerEvent<HTMLCanvasElement>): void {
     draggedRef.current = false;
-    if (view !== 'cube' || event.button !== 0) return;
-    dragRef.current = { x: event.clientX, moved: 0 };
+    const touch = event.pointerType !== 'mouse';
+    if (event.button !== 0 || (!orbiting && !touch) || view === 'screen') return;
+    dragRef.current = { x: event.clientX, y: event.clientY, moved: 0, look: !orbiting };
     event.currentTarget.setPointerCapture(event.pointerId);
-    event.currentTarget.style.cursor = 'grabbing';
+    if (orbiting) event.currentTarget.style.cursor = 'grabbing';
   }
   function handlePointerUp(event: PointerEvent<HTMLCanvasElement>): void {
     if (dragRef.current === null) return;
-    draggedRef.current = dragRef.current.moved > 4;
+    draggedRef.current = dragRef.current.moved > 6;
     dragRef.current = null;
-    event.currentTarget.style.cursor = 'grab';
+    if (orbiting) event.currentTarget.style.cursor = 'grab';
   }
   function handlePointerMove(event: PointerEvent<HTMLCanvasElement>): void {
     const scene = sceneRef.current;
     if (scene === null) return;
+    const rect = event.currentTarget.getBoundingClientRect();
     const drag = dragRef.current;
     if (drag !== null) {
       const dx = event.clientX - drag.x;
+      const dy = event.clientY - drag.y;
       drag.x = event.clientX;
-      drag.moved += Math.abs(dx);
-      // Toute la largeur du cadre vaut environ 230° : on fait tourner le cube comme sur une platine.
-      scene.orbitCube(-dx / event.currentTarget.getBoundingClientRect().width * Math.PI * 1.3);
+      drag.y = event.clientY;
+      drag.moved += Math.abs(dx) + Math.abs(dy);
+      if (!drag.look) {
+        // Toute la largeur du cadre vaut environ 230° : on fait tourner l'objet comme sur une platine.
+        scene.orbitView(-dx / rect.width * Math.PI * 1.3);
+      } else {
+        // Le doigt tire la vue, comme une photo panoramique : glisser vers la droite tourne le regard
+        // vers la gauche. Toute la largeur de l'écran vaut environ 70°.
+        scene.look(dx / rect.width * 1.2, dy / rect.height * 0.8);
+      }
       return;
     }
-    const rect = event.currentTarget.getBoundingClientRect();
+    if (event.pointerType !== 'mouse') return;
     scene.setPointer(((event.clientX - rect.left) / rect.width) * 2 - 1, -(((event.clientY - rect.top) / rect.height) * 2 - 1));
     const hit = scene.pick(event.clientX, event.clientY);
-    if (view === 'cube' && hit.zone === 'cube') { event.currentTarget.style.cursor = 'grab'; return; }
+    if (orbiting && hit.zone === view) { event.currentTarget.style.cursor = 'grab'; return; }
     const onItem = view === 'shelf' && hit.index >= 0;
     const toZone = hit.zone !== null && (hit.zone === 'power' || zoneView(hit.zone) !== view) && !onItem ? hit.zone : null;
     event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : 'default';
     if (onItem && zoomed < 0) setActive(hit.index);
   }
-  function handlePointerLeave(): void {
+  function handlePointerLeave(event: PointerEvent<HTMLCanvasElement>): void {
+    // Au doigt, le regard reste où on l'a laissé ; la souris, elle, recentre la vue en sortant.
+    if (event.pointerType !== 'mouse') return;
     sceneRef.current?.setPointer(0, 0);
     if (zoomed < 0) setActive(-1);
   }
@@ -255,8 +272,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (pc === 'bios') { if (event.key === 'F1') { setPc('boot'); event.preventDefault(); } else if (event.key !== 'Escape') event.preventDefault(); if (event.key !== 'Escape') return; }
     if (BOOTING.includes(pc) && event.key !== 'Escape') { setPc('on'); event.preventDefault(); return; }
     if (event.key === 'Escape' && (zoomed >= 0 || view !== 'overview')) { back(); event.preventDefault(); return; }
-    if (view === 'cube' && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
-      sceneRef.current?.orbitCube(ORBIT_STEP * (event.key === 'ArrowLeft' ? 1 : -1));
+    if (orbiting && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
+      sceneRef.current?.orbitView(ORBIT_STEP * (event.key === 'ArrowLeft' ? 1 : -1));
       event.preventDefault();
       return;
     }

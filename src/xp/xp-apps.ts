@@ -2,7 +2,7 @@
 // XpApps — Ce que lance chaque raccourci du bureau XP de la chambre
 // ----------------------------------------------------------------------------
 // Fonction pure, calculée au build : un projet qui a une démo en ligne s'ouvre dans
-// Internet Explorer ; sinon sa vidéo passe dans le Lecteur Windows Media ; à défaut,
+// Internet Explorer, sauf les jeux de bureau (le Démineur) qui ont leur propre fenêtre ; sinon sa vidéo passe dans le Lecteur Windows Media ; à défaut,
 // Internet Explorer affiche son site ou sa fiche. Les catégories deviennent les
 // dossiers de « Mes documents ».
 // ============================================================================
@@ -13,7 +13,12 @@ import { assetUrl, formatRoute } from '../domain/routes.ts';
 type XpAppBase = { id: string; name: string; icon: string };
 export type XpBrowserApp = XpAppBase & { kind: 'browser'; url: string };
 export type XpPlayerApp = XpAppBase & { kind: 'player'; video: string; poster: string };
-export type XpApp = XpBrowserApp | XpPlayerApp;
+// Programme dans sa propre fenêtre, sans navigateur autour.
+export type XpWindowApp = XpAppBase & { kind: 'window'; url: string };
+export type XpApp = XpBrowserApp | XpPlayerApp | XpWindowApp;
+
+// Projets qui imitent un programme de Windows : leur démo s'ouvre comme une application.
+const WINDOWED = new Set(['minesweeper-infinite']);
 export type XpFolder = { id: string; label: string; appIds: string[] };
 export type XpCatalog = { apps: Record<string, XpApp>; order: string[]; folders: XpFolder[] };
 
@@ -30,7 +35,7 @@ export function buildXpCatalog(projects: readonly PublicProject[], categories: r
     const video = project.media.find((media) => media.type === 'video');
     const website = project.links.find((link) => link.type === 'website');
     if (demo !== undefined) {
-      apps[project.id] = { ...common, kind: 'browser', url: demo.url };
+      apps[project.id] = { ...common, kind: WINDOWED.has(project.id) ? 'window' : 'browser', url: demo.url };
     } else if (video !== undefined) {
       apps[project.id] = { ...common, kind: 'player', video: assetUrl(video.src, base), poster: assetUrl(video.poster, base) };
     } else if (project.preview.video !== undefined) {

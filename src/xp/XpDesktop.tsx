@@ -6,14 +6,15 @@
 // icônes d'origine de XP : une icône par projet, les icônes système, le menu Démarrer
 // et une barre des tâches qui liste les fenêtres ouvertes. Un double-clic (ou Entrée)
 // sur un projet ouvre sa démo dans Internet Explorer ou sa vidéo dans le Lecteur
-// Windows Media ; le Poste de travail et Mes documents s'ouvrent dans l'Explorateur.
+// Windows Media, ou dans sa propre fenêtre pour un jeu de bureau comme le Démineur ;
+// le Poste de travail et Mes documents s'ouvrent dans l'Explorateur.
 // ============================================================================
 import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent } from 'react';
 import type { Locale } from '../domain/locale.ts';
 import type { XpCatalog } from './xp-apps.ts';
 import { SHORTCUT_SVG, svgUrl, XP_HEIGHT, XP_LABELS, XP_TASKBAR, XP_USER, XP_WIDTH, xpAsset, type XpFile } from './xp-art.ts';
 import XpWindow, { type XpWindowFrame } from './XpWindow.tsx';
-import { XpBrowser, XpExplorer, XpPlayer, type XpPlace } from './XpPrograms.tsx';
+import { XpBrowser, XpExplorer, XpGameWindow, XpPlayer, type XpPlace } from './XpPrograms.tsx';
 import './xp-windows.css';
 
 export type XpDesktopProps = {
@@ -70,6 +71,8 @@ export default function XpDesktop({ locale, catalog, base, onTurnOff }: XpDeskto
     const app = catalog.apps[appId];
     if (app === undefined) return;
     if (app.kind === 'browser') open({ id: `app:${appId}`, appId, title: `${app.name} - ${labels.ieTitle}`, icon: asset('ie') }, { w: 900, h: 640 });
+    // Fenêtre au format du plateau débutant du Démineur ; elle s'ajuste ensuite au jeu.
+    else if (app.kind === 'window') open({ id: `app:${appId}`, appId, title: app.name, icon: app.icon }, { w: 170, h: 254 });
     else open({ id: `app:${appId}`, appId, title: `${app.name} - ${labels.player}`, icon: asset('playerSmall') }, { w: 680, h: 500 });
   }
   function openPlace(place: XpPlace): void {
@@ -162,6 +165,13 @@ export default function XpDesktop({ locale, catalog, base, onTurnOff }: XpDeskto
             onDragStart={(event) => dragStart(win.id, event)}>
             {app?.kind === 'browser' && <XpBrowser app={app} labels={labels} asset={asset} />}
             {app?.kind === 'player' && <XpPlayer app={app} labels={labels} />}
+            {app?.kind === 'window' && (
+              <XpGameWindow app={app} onResize={(dw, dh) => update(win.id, (frame) => {
+                const w = Math.min(AREA.width, frame.w + dw);
+                const h = Math.min(AREA.height, frame.h + dh);
+                return { w, h, x: Math.max(0, Math.min(frame.x, AREA.width - w)), y: Math.max(0, Math.min(frame.y, AREA.height - h)) };
+              })} />
+            )}
             {win.place !== undefined && (
               <XpExplorer start={win.place} catalog={catalog} labels={labels} asset={asset} onOpenApp={openApp}
                 onTitle={(title, icon) => setTitle(win.id, title, icon)} />

@@ -365,7 +365,7 @@ main { padding: .25rem 0 3rem; }
 .room-page[data-state="failed"] .room__stage { display: none; }
 .room__fallback { max-width: 48rem; margin: 0 auto; padding: 3rem 1.25rem; color: var(--muted); }
 .room__fallback a { color: var(--text); }
-.room__canvas { display: block; width: 100%; height: 100%; outline: none; }
+.room__canvas { display: block; width: 100%; height: 100%; outline: none; touch-action: none; }
 .room__loading { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .75rem; color: #c9c3b8; font: 500 .8rem var(--font-mono); }
 .room__progress { width: min(22rem, 70%); height: .4rem; overflow: hidden; border: 1px solid rgb(255 255 255 / .25); border-radius: 99px; background: rgb(255 255 255 / .06); }
 .room__progress span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #d9b45e, #f4efe6); transition: width .3s ease; }

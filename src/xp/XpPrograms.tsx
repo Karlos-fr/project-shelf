@@ -1,5 +1,5 @@
 // ============================================================================
-// XpPrograms — Internet Explorer, Lecteur Windows Media et Explorateur façon XP
+// XpPrograms — Internet Explorer, Lecteur Windows Media, Explorateur et Démineur façon XP
 // ----------------------------------------------------------------------------
 // Contenus des fenêtres du bureau XP de la chambre. Internet Explorer affiche la démo
 // d'un projet dans un cadre ; le Lecteur Windows Media lit sa vidéo ; l'Explorateur
@@ -8,7 +8,7 @@
 // réagissent, les autres sont présents pour l'aspect.
 // ============================================================================
 import { useEffect, useRef, useState, type ReactNode } from 'react';
-import type { XpApp, XpBrowserApp, XpCatalog, XpPlayerApp } from './xp-apps.ts';
+import type { XpApp, XpBrowserApp, XpCatalog, XpPlayerApp, XpWindowApp } from './xp-apps.ts';
 import { SHORTCUT_SVG, svgUrl, type XP_LABELS, type XpFile } from './xp-art.ts';
 
 type Labels = (typeof XP_LABELS)['fr'] | (typeof XP_LABELS)['en'];
@@ -41,6 +41,63 @@ function Tool({ icon, label, title, disabled = false, arrow = false, small = fal
 // ----------------------------------------------------------------------------
 // Internet Explorer 6 : barre de menus, boutons, barre d'adresse, page et barre d'état.
 // ----------------------------------------------------------------------------
+// Marge du jeu autour de son plateau, rognée par la fenêtre : en dessous, le jeu réduirait
+// son plateau pour tenir dans le cadre.
+const GAME_MARGIN = 24;
+
+// ----------------------------------------------------------------------------
+// Fenêtre du Démineur (Minesweeper Infinite) : le jeu dans un cadre, sans navigateur.
+// Quand sa page est lisible (même origine, donc sur le site en ligne), la fenêtre épouse
+// le plateau et la barre de menus, s'agrandit le temps que le menu Game est déroulé et suit
+// les changements de difficulté ; onResize reçoit l'écart en pixels. En mode « Fit to
+// window », c'est le jeu qui remplit la fenêtre. Ailleurs, elle garde sa taille de départ.
+// ----------------------------------------------------------------------------
+export function XpGameWindow({ app, onResize }: { app: XpWindowApp; onResize(dw: number, dh: number): void }) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const timerRef = useRef(0);
+  const fitRef = useRef(onResize);
+  fitRef.current = onResize;
+  useEffect(() => () => window.clearInterval(timerRef.current), []);
+  function handleLoad(): void {
+    const frame = frameRef.current;
+    let doc: Document | null = null;
+    try { doc = frame?.contentDocument ?? null; } catch { doc = null; }
+    if (frame === null || doc === null) return;
+    const page = doc;
+    // Fond gris de Windows autour du plateau, au lieu du fond sombre de la page du jeu.
+    page.documentElement.style.background = page.body.style.background = '#ece9d8';
+    // Ligne cochée du menu Game : la coche est une image.
+    const checked = (row: Element) => row.querySelector('.ms-menu__check img') !== null;
+    const fit = () => {
+      const rows = [...page.querySelectorAll('.ms-menu__panel--game .ms-menu__row')];
+      if (rows.some((row) => checked(row) && row.textContent?.includes('Fit to window'))) return;
+      // Le jeu réduit son plateau quand le cadre est trop petit : sa barre de menus fait alors
+      // moins de 20 px (fois le zoom). On agrandit, puis on réajuste au tour suivant.
+      const zoom = Number(rows.find((row) => checked(row) && row.hasAttribute('data-zoom'))?.getAttribute('data-zoom') ?? 1);
+      const bar = page.querySelector<HTMLElement>('.ms-menu__topbar');
+      if (bar !== null && bar.offsetHeight > 0 && bar.offsetHeight < 20 * zoom - 0.5) { fitRef.current(160, 160); return; }
+      const parts = ['.ms-board', '.ms-menu__topbar', '.ms-menu__panel']
+        .flatMap((selector) => [...page.querySelectorAll(selector)].map((element) => element.getBoundingClientRect()))
+        .filter((rect) => rect.width > 0 && rect.height > 0);
+      if (parts.length === 0) return;
+      const width = Math.ceil(Math.max(...parts.map((rect) => rect.right)) - Math.min(...parts.map((rect) => rect.left)));
+      const height = Math.ceil(Math.max(...parts.map((rect) => rect.bottom)) - Math.min(...parts.map((rect) => rect.top)));
+      const dw = width - (frame.clientWidth - 2 * GAME_MARGIN);
+      const dh = height - (frame.clientHeight - 2 * GAME_MARGIN);
+      if (dw !== 0 || dh !== 0) fitRef.current(dw, dh);
+    };
+    window.clearInterval(timerRef.current);
+    fit();
+    timerRef.current = window.setInterval(fit, 200);
+  }
+  const outset = { left: -GAME_MARGIN, top: -GAME_MARGIN, width: `calc(100% + ${2 * GAME_MARGIN}px)`, height: `calc(100% + ${2 * GAME_MARGIN}px)` };
+  return (
+    <div className="xp-game">
+      <iframe ref={frameRef} src={app.url} title={app.name} style={outset} onLoad={handleLoad} />
+    </div>
+  );
+}
+
 export function XpBrowser({ app, labels, asset }: { app: XpBrowserApp; labels: Labels; asset: Asset }) {
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);

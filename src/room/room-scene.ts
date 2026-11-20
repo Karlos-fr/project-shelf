@@ -37,9 +37,9 @@ import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
-export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'cube';
+export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'cube' | 'lego';
 // Zone cliquable : un meuble qui mène à une vue.
-export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'poster' | 'cube';
+export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'poster' | 'cube' | 'lego';
 export type RoomHit = { zone: RoomZone | null; index: number };
 
 export type RoomSceneOptions = {
@@ -68,10 +68,12 @@ export type RoomScene = {
   setView(view: RoomView): void;
   setActive(index: number): void;
   setZoom(index: number): void;
-  // Vue du cube : fait pivoter la caméra autour de son centre, en radians (bornée à ± 60°).
-  orbitCube(delta: number): void;
+  // Vues du cube et de l'île LEGO : fait pivoter la caméra autour de l'objet, en radians (borné à ± 60° et ± 40°).
+  orbitView(delta: number): void;
   // Position du pointeur dans [-1, 1] sur chaque axe : léger effet de parallaxe.
   setPointer(x: number, y: number): void;
+  // Au doigt : tourne le regard depuis la position de la caméra, en radians (gauche, haut), borné.
+  look(yaw: number, pitch: number): void;
   pick(clientX: number, clientY: number): RoomHit;
   // Rectangle de la dalle du CRT dans le canvas, en pixels CSS, une fois la caméra arrivée.
   screenRect(): { left: number; top: number; width: number; height: number } | null;
@@ -103,8 +105,10 @@ const SHELF = { x: -RX + RACK_DEPTH / 2 + 0.01, y: RACK_LEVELS[3], z: -0.3, widt
 
 // Centre du cube à LED, posé au milieu du niveau sous les boîtes ; la vue du cube tourne autour.
 const CUBE_CENTER = { y: RACK_LEVELS[2] + 0.125 };
-// Débattement de la caméra de part et d'autre de la face avant du cube.
+// Débattement de la caméra de part et d'autre de la face avant du cube ou de l'île.
 const CUBE_ORBIT_MAX = THREE.MathUtils.degToRad(60);
+// Autour de l'île, au-delà de 40°, le cube ou un montant de l'étagère passe devant elle.
+const LEGO_ORBIT_MAX = THREE.MathUtils.degToRad(40);
 
 type Pose = { position: THREE.Vector3; target: THREE.Vector3; fov: number };
 const pose = (p: [number, number, number], t: [number, number, number], fov: number): Pose =>
@@ -118,6 +122,8 @@ const VIEWS: Record<RoomView, Pose> = {
   shelf: pose([0.05, SHELF.y - 0.02, SHELF.z], [SHELF.x, SHELF.y - 0.12, SHELF.z], 44),
   // Calculée à la volée autour du cube ; cette pose ne sert que de repli.
   cube: pose([SHELF.x + 0.7, CUBE_CENTER.y + 0.05, SHELF.z], [SHELF.x, CUBE_CENTER.y, SHELF.z], 34),
+  // Calculée à la volée autour de l'île ; cette pose ne sert que de repli.
+  lego: pose([SHELF.x + 0.6, RACK_LEVELS[2] + 0.25, SHELF.z + 0.27], [SHELF.x, RACK_LEVELS[2] + 0.06, SHELF.z + 0.27], 34),
 };
 
 // ----------------------------------------------------------------------------
@@ -354,10 +360,17 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // MOC LEGO « Île du Trésor Oublié » à l'échelle 1, à côté du cube, face à la pièce.
   // Facultative : sans son fichier, la chambre s'affiche sans elle.
   const island = await islandLoad;
+  // Boîte englobante de l'île : la vue LEGO la cadre et tourne autour de son centre.
+  let islandFrame: { center: THREE.Vector3; width: number; height: number; bounds: THREE.Box3 } | null = null;
   if (island !== null) {
     island.position.set(SHELF.x, RACK_LEVELS[2], SHELF.z + 0.27);
     island.rotation.y = Math.PI / 2;
+    island.userData.zone = 'lego';
     scene.add(island);
+    island.updateMatrixWorld(true);
+    const bounds = new THREE.Box3().setFromObject(island);
+    const size = bounds.getSize(new THREE.Vector3());
+    islandFrame = { center: bounds.getCenter(new THREE.Vector3()), width: Math.max(size.x, size.z), height: size.y, bounds };
   }
   // Prise murale à côté de l'étagère, et câble noir : il sort de la prise jack à l'arrière, descend
   // entre l'étagère et le mur, longe la plinthe puis remonte jusqu'à la fiche.
@@ -470,6 +483,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Angle visé autour du cube et angle affiché, qui le rejoint en douceur.
   let orbit = 0;
   let orbitShown = 0;
+  // Regard tourné au doigt (lacet, tangage), visé puis affiché avec amortissement.
+  const gaze = { yaw: 0, pitch: 0, yawShown: 0, pitchShown: 0 };
+  const gazeAim = new THREE.Vector3();
   const pointer = new THREE.Vector2();
   const sway = new THREE.Vector2();
   const timer = new THREE.Timer();
@@ -499,14 +515,19 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
         return { position: center.clone().addScaledVector(normal, 0.86).add(new THREE.Vector3(0, 0.05, 0)), target: center, fov: 34 };
       }
     }
-    if (view === 'cube') {
-      // Le cube entier (socle compris) occupe environ 70 % du cadre, quel que soit le format.
-      const center = new THREE.Vector3(SHELF.x, CUBE_CENTER.y, SHELF.z);
+    const subject = view === 'cube'
+      ? { center: new THREE.Vector3(SHELF.x, CUBE_CENTER.y, SHELF.z), width: 0.26, height: 0.3, nearest: 0.55, lift: 0.08 }
+      : view === 'lego' && islandFrame !== null
+        ? { center: islandFrame.center, width: islandFrame.width, height: islandFrame.height, nearest: 0.3, lift: 0.45 }
+        : null;
+    if (subject !== null) {
+      // L'objet entier occupe environ 70 % du cadre, quel que soit le format ; la caméra
+      // le regarde un peu d'en haut et tourne autour de son centre.
       const fov = 34;
       const half = Math.tan(THREE.MathUtils.degToRad(fov / 2));
-      const distance = Math.max(0.55, 0.3 / 0.7 / 2 / half, 0.26 / 0.7 / 2 / (half * camera.aspect));
-      const position = center.clone().add(new THREE.Vector3(Math.cos(orbitShown) * distance, 0.05 + distance * 0.08, -Math.sin(orbitShown) * distance));
-      return { position, target: center, fov };
+      const distance = Math.max(subject.nearest, subject.height / 0.7 / 2 / half, subject.width / 0.7 / 2 / (half * camera.aspect));
+      const position = subject.center.clone().add(new THREE.Vector3(Math.cos(orbitShown) * distance, 0.05 + distance * subject.lift, -Math.sin(orbitShown) * distance));
+      return { position, target: subject.center, fov };
     }
     if (view === 'screen') {
       // Recul tel que la dalle remplisse 84 % de la hauteur ou de la largeur du cadre.
@@ -560,15 +581,21 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     scratch.subVectors(current.target, current.position).normalize();
     right.crossVectors(scratch, THREE.Object3D.DEFAULT_UP).normalize();
     up.crossVectors(right, scratch).normalize();
-    // Autour du cube, le glissé fait tourner la caméra : pas de parallaxe en plus.
-    if (view === 'cube') {
+    // Autour du cube et de l'île, le glissé fait tourner la caméra : pas de parallaxe en plus.
+    const orbiting = view === 'cube' || view === 'lego';
+    if (orbiting) {
       orbitShown = damp(orbitShown, orbit, 8, dt);
       if (Math.abs(orbitShown - orbit) > 0.0005) busy = true; else orbitShown = orbit;
       if (progress >= 1) goal = goalPose();
     }
-    const amount = view === 'screen' || view === 'cube' ? 0 : zoomed >= 0 ? 0.012 : 0.05;
+    const amount = view === 'screen' || orbiting ? 0 : zoomed >= 0 ? 0.012 : 0.05;
     camera.position.copy(current.position).addScaledVector(right, sway.x * amount).addScaledVector(up, sway.y * amount * 0.5);
-    camera.lookAt(current.target);
+    gaze.yawShown = damp(gaze.yawShown, gaze.yaw, 10, dt);
+    gaze.pitchShown = damp(gaze.pitchShown, gaze.pitch, 10, dt);
+    if (Math.abs(gaze.yawShown - gaze.yaw) > 0.0005 || Math.abs(gaze.pitchShown - gaze.pitch) > 0.0005) busy = true;
+    gazeAim.subVectors(current.target, camera.position).applyAxisAngle(THREE.Object3D.DEFAULT_UP, gaze.yawShown);
+    gazeAim.applyAxisAngle(scratch.crossVectors(gazeAim, THREE.Object3D.DEFAULT_UP).normalize(), gaze.pitchShown);
+    camera.lookAt(gazeAim.add(camera.position));
     camera.updateMatrixWorld();
     const moving = !lastView.equals(camera.matrixWorld);
     lastView.copy(camera.matrixWorld);
@@ -657,6 +684,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
 
   // --------------------------------------------------------------- contrôleur
   const raycaster = new THREE.Raycaster();
+  const islandHit = new THREE.Vector3();
   const ndc = new THREE.Vector2();
   const zoneOf = (object: THREE.Object3D | null): RoomZone | null => {
     for (let node = object; node !== null; node = node.parent) {
@@ -671,13 +699,20 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       if (next === view) return;
       view = next;
       if (view !== 'shelf') { active = -1; zoomed = -1; }
-      if (view === 'cube') { orbit = 0; orbitShown = 0; }
+      if (view === 'cube' || view === 'lego') { orbit = 0; orbitShown = 0; }
+      gaze.yaw = 0; gaze.pitch = 0;
       retarget();
     },
     setActive(index) { if (index !== active) { active = index; wake(); } },
     setZoom(index) { if (index !== zoomed) { zoomed = index; retarget(); } },
-    orbitCube(delta) {
-      orbit = Math.max(-CUBE_ORBIT_MAX, Math.min(CUBE_ORBIT_MAX, orbit + delta));
+    orbitView(delta) {
+      const limit = view === 'lego' ? LEGO_ORBIT_MAX : CUBE_ORBIT_MAX;
+      orbit = Math.max(-limit, Math.min(limit, orbit + delta));
+      wake();
+    },
+    look(yaw, pitch) {
+      gaze.yaw = Math.max(-0.75, Math.min(0.75, gaze.yaw + yaw));
+      gaze.pitch = Math.max(-0.35, Math.min(0.35, gaze.pitch + pitch));
       wake();
     },
     setPointer(x, y) { pointer.set(Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))); wake(900); },
@@ -688,6 +723,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       // Les boîtes d'abord : le volume de clic de l'étagère passe devant elles.
       // Puis le cube, sinon c'est le volume de l'étagère qui le couvre.
       const item = raycaster.intersectObjects(model.pickTargets(), true)[0] ?? raycaster.intersectObject(cube.group, true)[0];
+      // L'île LEGO est petite et ajourée : toute sa boîte englobante est cliquable.
+      const onIsland = islandFrame === null ? null : raycaster.ray.intersectBox(islandFrame.bounds, islandHit);
+      if (onIsland !== null && onIsland.distanceTo(raycaster.ray.origin) < (item?.distance ?? Infinity)) return { zone: 'lego', index: -1 };
       const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, cube.group, model.group, poster, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };

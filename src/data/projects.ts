@@ -16,6 +16,7 @@ const MINE_RAW = 'https://raw.githubusercontent.com/Karlos-fr/la-mine-aux-diaman
 // Les vidéos de La Mine aux Diamants sont dans Git LFS : raw.githubusercontent.com
 // ne renvoie que le fichier pointeur, le contenu est servi par media.githubusercontent.com.
 const MINE_LFS = 'https://media.githubusercontent.com/media/Karlos-fr/la-mine-aux-diamants-to8-web/main';
+const MINESWEEPER_RAW = 'https://raw.githubusercontent.com/Karlos-fr/minesweeper-infinite/main';
 
 // Catalogue de production ; les fixtures de test vivent dans tests/.
 export const PROJECT_CATALOGUE: Catalogue = {
@@ -507,6 +508,70 @@ export const PROJECT_CATALOGUE: Catalogue = {
             'Le générateur de niveaux reste expérimental.',
           ],
           about: 'Un travail de préservation autour d\'un classique de l\'informatique française des années 80. L\'objectif est de rejouer le jeu tel qu\'il était, en documentant chaque choix à partir des sources d\'origine, puis de lui offrir des outils modernes. Les droits du jeu original restent à leurs ayants droit.',
+        },
+      },
+      application: { category: 'GameApplication', operatingSystems: ['Web browser'] },
+      indexable: true,
+    },
+    {
+      id: 'minesweeper-infinite',
+      name: 'Minesweeper Infinite',
+      categories: ['games-ports', 'web'],
+      // Premier commit et dernière mise à jour du dépôt.
+      createdAt: '2026-08-03',
+      updatedAt: '2026-08-17',
+      status: 'stable',
+      repositoryVisibility: 'public',
+      repositoryUrl: 'https://github.com/Karlos-fr/minesweeper-infinite',
+      hidden: false,
+      featured: false,
+      stack: ['TypeScript', 'Vite', 'Canvas 2D', 'Service Worker', 'GitHub Pages'],
+      // L'icône du dépôt sert de poster : c'est elle qui apparaît sur le bureau XP du PC de la chambre.
+      preview: { poster: `${MINESWEEPER_RAW}/doc/icon.png` },
+      media: [
+        { type: 'image', src: `${MINESWEEPER_RAW}/doc/header.png`, alt: { en: 'Minesweeper Infinite banner', fr: 'Bannière de Minesweeper Infinite' }, width: 2172, height: 724 },
+        { type: 'image', src: `${MINESWEEPER_RAW}/doc/icon.png`, alt: { en: 'Minesweeper Infinite icon: a mine on an infinite grid', fr: 'Icône de Minesweeper Infinite : une mine sur une grille infinie' }, width: 1254, height: 1254 },
+      ],
+      links: [
+        { type: 'demo', url: 'https://karlos-fr.github.io/minesweeper-infinite/' },
+        { type: 'documentation', url: 'https://github.com/Karlos-fr/minesweeper-infinite#readme' },
+      ],
+      content: {
+        en: {
+          tagline: 'The classic Windows XP Minesweeper, faithfully rebuilt for the browser, with a grid that fills any window.',
+          description: 'Minesweeper Infinite recreates the classic Minesweeper in strict TypeScript, with the pixel-art look of the Windows XP version: sprites, counters, smiley face and menu. It runs in any modern browser with no installation. On top of the three classic difficulties, a Fit to window mode sizes the grid and the mine count to the available space, and three zoom levels keep the pixel art sharp.',
+          features: [
+            'Complete game engine: mine placement, recursive opening, flags, chord opening, win and loss detection',
+            'Windows XP pixel-art interface: sprites, counters, faces and menu',
+            'Beginner, Intermediate and Expert difficulties',
+            'Fit to window mode that adapts the grid and the mine count',
+            '1x, 1.5x and 2x zoom, for every difficulty',
+            'Mouse and touch controls, with long press for flags',
+            'Timer, remaining-mine counter and sound effects',
+            'Basic offline play through a service worker',
+          ],
+          limitations: [
+            'Best times are not saved yet.',
+          ],
+          about: 'A small, faithful remake of a desktop classic, written from scratch in TypeScript. The visual presentation is based on ShizukuIchi/minesweeper.',
+        },
+        fr: {
+          tagline: 'Le Démineur classique de Windows XP, refait fidèlement pour le navigateur, avec une grille qui remplit n\'importe quelle fenêtre.',
+          description: 'Minesweeper Infinite reproduit le Démineur classique en TypeScript strict, avec l\'aspect pixel art de la version Windows XP : sprites, compteurs, smiley et menu. Il se lance dans n\'importe quel navigateur récent, sans installation. En plus des trois difficultés classiques, le mode « Fit to window » dimensionne la grille et le nombre de mines selon la place disponible, et trois niveaux de zoom gardent un pixel art net.',
+          features: [
+            'Moteur de jeu complet : placement des mines, ouverture récursive, drapeaux, ouverture combinée, victoire et défaite',
+            'Interface pixel art de Windows XP : sprites, compteurs, visages et menu',
+            'Difficultés Débutant, Intermédiaire et Expert',
+            'Mode « Fit to window » qui adapte la grille et le nombre de mines',
+            'Zoom 1x, 1,5x et 2x, pour chaque difficulté',
+            'Contrôles à la souris et au tactile, appui long pour les drapeaux',
+            'Chronomètre, compteur de mines restantes et effets sonores',
+            'Jeu hors ligne de base grâce à un service worker',
+          ],
+          limitations: [
+            'Les meilleurs temps ne sont pas encore enregistrés.',
+          ],
+          about: 'Un petit remake fidèle d\'un classique du bureau, écrit de zéro en TypeScript. La présentation visuelle s\'appuie sur ShizukuIchi/minesweeper.',
         },
       },
       application: { category: 'GameApplication', operatingSystems: ['Web browser'] },
