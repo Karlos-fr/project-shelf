@@ -29,7 +29,7 @@ import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
-import { buildL3dCube } from './l3d-cube.ts';
+import { buildL3dCube, POWER_JACK } from './l3d-cube.ts';
 import { startVirtualCube } from './virtual-cube.ts';
 import { buildOutlet } from './outlet.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
@@ -320,15 +320,15 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   rack.rotation.y = Math.PI / 2;
   rack.userData.zone = 'shelf';
   scene.add(rack);
-  // Cube à LED L3D 8 x 8 x 8 sur le niveau sous les boîtes, LED éteintes.
+  // Cube à LED L3D 8 x 8 x 8 sur le niveau sous les boîtes, LED et Photon éteints.
   const cube = buildL3dCube(keep);
   cube.group.position.set(SHELF.x, RACK_LEVELS[2], SHELF.z);
   cube.group.rotation.y = Math.PI / 2;
   cube.group.userData.zone = 'cube';
   scene.add(cube.group);
   // Le vrai firmware du cube, en WebAssembly : il s'éveille quand le studio L3D lui parle.
-  const virtualCube = startVirtualCube(`${roomBase}l3d/l3d-emulator.mjs`, (rgb) => cube.setFrame(rgb));
-  // Prise murale à côté de l'étagère, et câble noir : il sort à l'arrière du socle, descend
+  const virtualCube = startVirtualCube(`${roomBase}l3d/l3d-emulator.mjs`, (rgb) => cube.setFrame(rgb), (signal) => cube.setSignal(signal));
+  // Prise murale à côté de l'étagère, et câble noir : il sort de la prise jack à l'arrière, descend
   // entre l'étagère et le mur, longe la plinthe puis remonte jusqu'à la fiche.
   const outlet = buildOutlet(keep);
   outlet.group.position.set(-RX, 0.3, 0.38);
@@ -336,8 +336,11 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   scene.add(outlet.group);
   outlet.group.updateMatrixWorld(true);
   const plug = outlet.group.localToWorld(outlet.cableStart.clone());
+  cube.group.updateMatrixWorld(true);
+  const jack = cube.group.localToWorld(POWER_JACK.clone());
   const cablePath = new THREE.CatmullRomCurve3([
-    [SHELF.x - 0.089, RACK_LEVELS[2] + 0.015, SHELF.z],
+    [jack.x - 0.004, jack.y, jack.z],
+    [jack.x - 0.02, jack.y - 0.004, jack.z + 0.01],
     [-RX + 0.04, RACK_LEVELS[2] + 0.012, SHELF.z + 0.03],
     [-RX + 0.006, RACK_LEVELS[2] - 0.08, SHELF.z + 0.06],
     [-RX + 0.006, 0.45, SHELF.z + 0.13],
@@ -518,7 +521,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) busy = true;
     if (pc.update(performance.now())) busy = true;
     // Images du Photon virtuel reçues depuis le dernier rendu.
-    const cubeChanged = cube.update();
+    const cubeChanged = cube.update(performance.now());
     // La lampe d'accent s'allume sur l'étagère et suit la boîte sortie.
     const item = active >= 0 ? model.placed[active] : undefined;
     const aim = item !== undefined
