@@ -31,6 +31,7 @@ import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
 import { buildL3dCube, POWER_JACK } from './l3d-cube.ts';
 import { startVirtualCube } from './virtual-cube.ts';
+import { buildLegoMoc } from './lego-moc.ts';
 import { buildOutlet } from './outlet.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
@@ -328,6 +329,14 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   scene.add(cube.group);
   // Le vrai firmware du cube, en WebAssembly : il s'éveille quand le studio L3D lui parle.
   const virtualCube = startVirtualCube(`${roomBase}l3d/l3d-emulator.mjs`, (rgb) => cube.setFrame(rgb), (signal) => cube.setSignal(signal));
+  // MOC LEGO « Île du Trésor Oublié » à l'échelle 1, à côté du cube, face à la pièce.
+  // Facultative : sans son fichier, la chambre s'affiche sans elle.
+  const island = await buildLegoMoc(keep, `${roomBase}moc/ile-du-tresor.bin`).catch(() => null);
+  if (island !== null) {
+    island.position.set(SHELF.x, RACK_LEVELS[2], SHELF.z + 0.27);
+    island.rotation.y = Math.PI / 2;
+    scene.add(island);
+  }
   // Prise murale à côté de l'étagère, et câble noir : il sort de la prise jack à l'arrière, descend
   // entre l'étagère et le mur, longe la plinthe puis remonte jusqu'à la fiche.
   const outlet = buildOutlet(keep);
