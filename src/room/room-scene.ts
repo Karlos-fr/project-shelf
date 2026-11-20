@@ -9,7 +9,7 @@
 // ============================================================================
 import * as THREE from 'three/webgpu';
 import {
-  builtinShadowContext, color, convertToTexture, diffuseColor, float, metalness, mrt,
+  builtinShadowContext, color, screenSize, convertToTexture, diffuseColor, float, metalness, mrt,
   normalView, output, packNormalToRGB, pass, roughness, sample, screenUV, smoothstep, texture, unpackRGBToNormal,
   uniform, uv, vec2, vec3, vec4, velocity,
 } from 'three/tsl';
@@ -156,6 +156,15 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const dustTex = keep(blotchTexture(1024, 17, 140, 9000));
   const smudgeTex = keep(blotchTexture(512, 29, 60, 0));
   const pbr = (set: PbrSet, opts: WoodOptions) => keep(woodNodeMaterial(set, dustTex, opts));
+  // Objets chargés à part (images, maillages, boîtes) : tous lancés d'un coup, chacun attendu
+  // seulement là où il prend place, pour que téléchargements et décodages se chevauchent.
+  const magazinesLoad = buildMagazineStack(keep, roomBase, maxAniso);
+  const posterLoad = buildPoster(keep, `${roomBase}${POSTER_FILE}`, maxAniso);
+  const pcLoad = buildPc({ keep, maxAniso, smudgeTex, ...options.pc });
+  const islandLoad = buildLegoMoc(keep, `${roomBase}moc/ile-du-tresor.bin`).catch(() => null);
+  const modelLoad = buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width, { furniture: false, plaques: false });
+  // Un échec reste signalé à l'attente ; il ne doit pas l'être en plus comme rejet non traité.
+  for (const load of [magazinesLoad, posterLoad, pcLoad, modelLoad]) load.catch(() => undefined);
 
   // --------------------------------------------------------------- lumière
   // Le HDRI d'un vrai salon (Poly Haven, CC0) donne reflets et lumière ambiante, atténués :
@@ -174,6 +183,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   sun.shadow.bias = -0.0003;
   sun.shadow.normalBias = 0.02;
   sun.shadow.radius = 5;
+  // La pièce est immobile : la carte d'ombre (4096²) n'est recalculée que quand une boîte bouge.
+  sun.shadow.autoUpdate = false;
+  sun.shadow.needsUpdate = true;
   Object.assign(sun.shadow.camera, { left: -3.8, right: 3.8, top: 3.8, bottom: -3.8, near: 0.5, far: 12 });
   scene.add(sun, sun.target);
   // Ciel vu par la fenêtre : une lumière surfacique douce et froide, sans ombre.
@@ -288,7 +300,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   }
 
   // Pile de magazines d'époque au coin droit du bureau, derrière le tapis de souris.
-  const magazines = await buildMagazineStack(keep, roomBase, maxAniso);
+  const magazines = await magazinesLoad;
   magazines.position.set(0.5, dh, -0.15);
   magazines.rotation.y = -0.12;
   desk.add(magazines);
@@ -302,13 +314,13 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   buildChair(chair);
 
   // --------------------------------------------------------------- affiche
-  const poster = await buildPoster(keep, `${roomBase}${POSTER_FILE}`, maxAniso);
+  const poster = await posterLoad;
   poster.position.set(POSTER.x, POSTER.y, BACK + 0.0005);
   poster.userData.zone = 'poster';
   scene.add(poster);
 
   // --------------------------------------------------------------- ordinateur
-  const pc = await buildPc({ keep, maxAniso, smudgeTex, ...options.pc });
+  const pc = await pcLoad;
   pc.group.position.set(DESK.x, DESK.h, DESK.z);
   pc.group.userData.zone = 'desk';
   scene.add(pc.group);
@@ -331,7 +343,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const virtualCube = startVirtualCube(`${roomBase}l3d/l3d-emulator.mjs`, (rgb) => cube.setFrame(rgb), (signal) => cube.setSignal(signal));
   // MOC LEGO « Île du Trésor Oublié » à l'échelle 1, à côté du cube, face à la pièce.
   // Facultative : sans son fichier, la chambre s'affiche sans elle.
-  const island = await buildLegoMoc(keep, `${roomBase}moc/ile-du-tresor.bin`).catch(() => null);
+  const island = await islandLoad;
   if (island !== null) {
     island.position.set(SHELF.x, RACK_LEVELS[2], SHELF.z + 0.27);
     island.rotation.y = Math.PI / 2;
@@ -361,7 +373,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     [plug.x, plug.y, plug.z],
   ].map(([x, y, z]) => new THREE.Vector3(x, y, z)));
   add(scene, new THREE.TubeGeometry(cablePath, 220, 0.0028, 8, false), keep(new THREE.MeshStandardMaterial({ color: 0x141414, roughness: 0.55 })), 0, 0, 0);
-  const model = await buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width, { furniture: false, plaques: false });
+  const model = await modelLoad;
   model.group.position.set(SHELF.x, SHELF.y, SHELF.z);
   model.group.rotation.y = Math.PI / 2;
   model.group.userData.zone = 'shelf';
@@ -397,7 +409,18 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   gi.thickness.value = 0.1;
   gi.giIntensity.value = 1.3;
   const albedo = scenePass.getTextureNode('diffuseColor');
-  let lit: THREE.Node<'vec4'> = vec4(beauty.rgb.mul(gi.getAONode()).add(albedo.rgb.mul(gi.getGINode().rgb)), beauty.a);
+  // Flou 1-2-1 sur 3 x 3 texels de la lumière indirecte, lue dans sa texture à demi-résolution :
+  // il gomme le grain du SSGI (surtout visible caméra en mouvement), sans passe de plus.
+  const giTexel = vec2(2).div(screenSize);
+  let giAo: THREE.Node<'vec4'> = vec4(0);
+  for (const dx of [-1, 0, 1]) {
+    for (const dy of [-1, 0, 1]) {
+      const at = screenUV.add(vec2(dx, dy).mul(giTexel));
+      const weight = ((dx === 0 ? 2 : 1) * (dy === 0 ? 2 : 1)) / 16;
+      giAo = giAo.add(vec4(gi.getGINode().sample(at).rgb, gi.getAONode().sample(at).r).mul(weight));
+    }
+  }
+  let lit: THREE.Node<'vec4'> = vec4(beauty.rgb.mul(giAo.a).add(albedo.rgb.mul(giAo.rgb)), beauty.a);
   // Réflexions du vernis et du parquet.
   const metalRough = scenePass.getTextureNode('metalrough');
   const reflections = ssr(convertToTexture(lit), preDepth, preNormal, { metalnessNode: metalRough.r, roughnessNode: metalRough.g, reflectNonMetals: true, camera });
@@ -413,6 +436,15 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   rays.raymarchSteps.value = 56;
   lit = depthAwareBlend(convertToTexture(lit), bilateralBlur(rays.getTextureNode()).getTextureNode(), preDepth, camera,
     { blendColor: color(0xfff1dc), edgeRadius: 2, edgeStrength: 2 });
+  // Qualité adaptative : caméra en mouvement, moins d'échantillons pour SSGI, SSR et rayons
+  // (le lissage temporel repart de toute façon de zéro) ; à l'arrêt, la pleine qualité revient
+  // pour les images de convergence. Ce sont des uniformes : rien n'est recompilé.
+  const setQuality = (moving: boolean) => {
+    gi.sliceCount.value = moving ? 1 : 3;
+    gi.stepCount.value = moving ? 6 : 12;
+    reflections.quality.value = moving ? 0.25 : 0.5;
+    rays.raymarchSteps.value = moving ? 16 : 56;
+  };
   const clean = sharpen(traa(lit, preDepth, preVelocity, camera), 0.15);
   const glow = bloom(clean, 0.22, 0.4, 1.1);
   const balanced = clean.rgb.add(glow.rgb).mul(vec3(0.92, 1.0, 1.1));
@@ -441,6 +473,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let settle = SETTLE_FRAMES;
   const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); settle = SETTLE_FRAMES; };
   const damp = (a: number, b: number, k: number, dt: number) => (reducedMotion ? b : a + (b - a) * (1 - Math.exp(-k * dt)));
+  // Pose de la caméra à l'image précédente, pour savoir si elle bouge.
+  const lastView = new THREE.Matrix4();
   const right = new THREE.Vector3();
   const up = new THREE.Vector3();
   const scratch = new THREE.Vector3();
@@ -525,9 +559,12 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     const amount = view === 'screen' || view === 'cube' ? 0 : zoomed >= 0 ? 0.012 : 0.05;
     camera.position.copy(current.position).addScaledVector(right, sway.x * amount).addScaledVector(up, sway.y * amount * 0.5);
     camera.lookAt(current.target);
+    camera.updateMatrixWorld();
+    const moving = !lastView.equals(camera.matrixWorld);
+    lastView.copy(camera.matrixWorld);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
 
-    if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) busy = true;
+    if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) { busy = true; sun.shadow.needsUpdate = true; }
     if (pc.update(performance.now())) busy = true;
     // Images du Photon virtuel reçues depuis le dernier rendu.
     const cubeChanged = cube.update(performance.now());
@@ -540,6 +577,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     lamp.intensity = damp(lamp.intensity, view !== 'shelf' ? 0 : item !== undefined ? 6 : 3, 3, dt);
     if (busy) settle = SETTLE_FRAMES;
     if (busy || performance.now() < awakeUntil || settle > 0 || cubeChanged) {
+      setQuality(moving);
       pipeline.render();
       settle -= 1;
     }

@@ -112,11 +112,21 @@ export function worn(source: CanvasImageSource & { width: number; height: number
   return result;
 }
 
+// Grain du papier : 65 536 tirages faits une fois, lus par hachage de la position du pixel.
+let toothTable: Float32Array | null = null;
+function toothNoise(): Float32Array {
+  if (toothTable === null) {
+    const rand = seeded(9);
+    toothTable = Float32Array.from({ length: 1 << 16 }, () => rand() - 0.5);
+  }
+  return toothTable;
+}
+
 // ----------------------------------------------------------------------------
 // Relief tiré de l'image : l'encre forme un léger bossage, le papier garde son grain.
 // Retour : normal map au format OpenGL, en espace linéaire.
 // ----------------------------------------------------------------------------
-export function printNormal(source: CanvasImageSource & { width: number; height: number }, strength = 2.2, tooth = 0.05, maxWidth = 1400): THREE.CanvasTexture {
+export function printNormal(source: CanvasImageSource & { width: number; height: number }, strength = 2.2, tooth = 0.05, maxWidth = 1024): THREE.CanvasTexture {
   const w = Math.min(source.width, maxWidth);
   const h = Math.round(source.height * w / source.width);
   const [canvas, context] = canvas2d(w, h, true);
@@ -124,16 +134,20 @@ export function printNormal(source: CanvasImageSource & { width: number; height:
   const image = context.getImageData(0, 0, w, h);
   const data = image.data;
   const luminance = new Float32Array(w * h);
-  for (let k = 0; k < w * h; k += 1) luminance[k] = ((data[k * 4] ?? 0) * 0.299 + (data[k * 4 + 1] ?? 0) * 0.587 + (data[k * 4 + 2] ?? 0) * 0.114) / 255;
-  const rand = seeded(9);
+  for (let k = 0, p = 0; k < w * h; k += 1, p += 4) luminance[k] = (data[p]! * 0.299 + data[p + 1]! * 0.587 + data[p + 2]! * 0.114) / 255;
+  const noise = toothNoise();
+  // Boucle chaude (des millions de pixels au chargement) : indices précalculés, pas de Math.hypot.
   for (let y = 0; y < h; y += 1) {
+    const row = y * w;
+    const up = (y > 0 ? y - 1 : 0) * w;
+    const down = (y < h - 1 ? y + 1 : y) * w;
     for (let x = 0; x < w; x += 1) {
-      const dx = (luminance[y * w + Math.min(x + 1, w - 1)] ?? 0) - (luminance[y * w + Math.max(x - 1, 0)] ?? 0);
-      const dy = (luminance[Math.min(y + 1, h - 1) * w + x] ?? 0) - (luminance[Math.max(y - 1, 0) * w + x] ?? 0);
-      const nx = dx * strength + (rand() - 0.5) * tooth;
-      const ny = -dy * strength + (rand() - 0.5) * tooth;
-      const inverse = 1 / Math.hypot(nx, ny, 1);
-      const k = (y * w + x) * 4;
+      const left = x > 0 ? x - 1 : 0;
+      const right = x < w - 1 ? x + 1 : x;
+      const nx = (luminance[row + right]! - luminance[row + left]!) * strength + noise[((x * 7919) ^ (y * 104729)) & 0xffff]! * tooth;
+      const ny = -(luminance[down + x]! - luminance[up + x]!) * strength + noise[((x * 104729) ^ (y * 7919) ^ 0x5bd1) & 0xffff]! * tooth;
+      const inverse = 1 / Math.sqrt(nx * nx + ny * ny + 1);
+      const k = (row + x) * 4;
       data[k] = (nx * inverse * 0.5 + 0.5) * 255;
       data[k + 1] = (ny * inverse * 0.5 + 0.5) * 255;
       data[k + 2] = (inverse * 0.5 + 0.5) * 255;

@@ -3,19 +3,19 @@
 // ----------------------------------------------------------------------------
 // Lit le maillage compact produit par scripts/convert-moc.py à partir du fichier
 // BrickLink Studio (.io) et de la géométrie des pièces LDraw : un groupe par couleur,
-// positions entières (unité donnée par l'en-tête) et indices. Les normales sont
-// recalculées avec des arêtes vives, comme sur de vraies briques. Origine : centre du
+// positions entières (unité donnée par l'en-tête) et indices. Pas de normales : l'ombrage
+// plat, calculé par le GPU, donne des arêtes vives comme sur de vraies briques et évite
+// des secondes de calcul au chargement. Origine : centre du
 // dessous de la base ; avant vers +z ; y vers le haut ; mètres.
 // ============================================================================
 import * as THREE from 'three/webgpu';
-import { toCreasedNormals } from 'three/addons/utils/BufferGeometryUtils.js';
 
 type MocGroup = { code: number; name: string; rgb: string; alpha: number; finish: string | null; vertices: number; indices: number };
 type MocHeader = { source: string; unit: number; groups: MocGroup[] };
 
 // Matériau d'une couleur LEGO : ABS brillant, transparent, chromé ou nacré.
 function brickMaterial(group: MocGroup): THREE.MeshPhysicalMaterial {
-  const material = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(`#${group.rgb}`), roughness: 0.28, clearcoat: 0.35, clearcoatRoughness: 0.2, side: THREE.DoubleSide });
+  const material = new THREE.MeshPhysicalMaterial({ color: new THREE.Color(`#${group.rgb}`), roughness: 0.28, clearcoat: 0.35, clearcoatRoughness: 0.2, side: THREE.DoubleSide, flatShading: true });
   if (group.alpha < 1) {
     material.transparent = true;
     material.opacity = 0.55;
@@ -46,12 +46,10 @@ export async function buildLegoMoc(keep: <V extends { dispose(): void }>(value: 
     const index = new Uint32Array(buffer, offset, part.indices);
     offset += part.indices * 4;
     const positions = Float32Array.from(raw, (value) => value * header.unit);
-    const indexed = new THREE.BufferGeometry();
-    indexed.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-    indexed.setIndex(new THREE.BufferAttribute(index, 1));
-    // Arêtes vives au-delà de 35°, surfaces courbes (tenons, feuilles) lissées.
-    const geometry = keep(toCreasedNormals(indexed, THREE.MathUtils.degToRad(35)));
-    indexed.dispose();
+    const geometry = keep(new THREE.BufferGeometry());
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setIndex(new THREE.BufferAttribute(index, 1));
+    geometry.computeBoundingSphere();
     const mesh = new THREE.Mesh(geometry, keep(brickMaterial(part)));
     mesh.castShadow = part.alpha === 1;
     mesh.receiveShadow = true;
