@@ -5,7 +5,7 @@
 // l'étagère seule et à la chambre. Ces fonctions créent des toiles hors DOM.
 // ============================================================================
 import * as THREE from 'three/webgpu';
-import { color, float, mix, normalMap, normalWorld, texture, uv, vec2 } from 'three/tsl';
+import { color, float, materialReference, mix, normalMap, normalWorld, texture, uv, vec2 } from 'three/tsl';
 import type { ShelfBox, ShelfSpine } from './shelf-items.ts';
 
 // ----------------------------------------------------------------------------
@@ -311,21 +311,55 @@ export type WoodOptions = {
 // en mémoire vidéo par objet Texture) ; répétition, décalage et rotation sont calculés
 // dans le shader, avec la même convention que Texture.repeat/offset/rotation.
 // Une fine poussière se dépose sur les faces tournées vers le haut et mate le vernis.
+// Les nœuds du shader sont partagés par toutes les pièces d'une même essence : Three.js
+// identifie un shader par ses nœuds, si bien que des nœuds neufs pour chaque pièce
+// obligeraient à générer et compiler un shader par pièce. Les réglages propres à chaque
+// pièce sont lus sur le matériau (materialReference) et ne changent pas le shader.
 // ----------------------------------------------------------------------------
-export function woodNodeMaterial(set: PbrSet, dustTex: THREE.Texture, options: WoodOptions): THREE.MeshPhysicalNodeMaterial {
-  const { ru, rv, rotate = false, ox = 0, oy = 0, coat = 0.3, coatRoughness = 0.32, tint = 0xd2c8c0, normalScale = 2.2, dust: dustAmount = 0.32, brightness = 1 } = options;
+type WoodNodes = Pick<THREE.MeshPhysicalNodeMaterial, 'colorNode' | 'normalNode' | 'roughnessNode' | 'aoNode'>;
+const woodGraphs = new WeakMap<PbrSet, Map<string, WoodNodes>>();
+// Le matériau d'ombre de Three.js réutilise ces nœuds sans porter les réglages d'une
+// pièce : des valeurs par défaut sur le prototype lui évitent de lire une valeur absente.
+for (const [name, value] of Object.entries({ woodRepeat: new THREE.Vector2(1, 1), woodOffset: new THREE.Vector2(), woodTint: new THREE.Color(1, 1, 1), woodNormalScale: 1, woodDust: 0 })) {
+  if (!(name in THREE.NodeMaterial.prototype)) Object.defineProperty(THREE.NodeMaterial.prototype, name, { value, writable: true, configurable: true });
+}
+
+function woodNodes(set: PbrSet, dustTex: THREE.Texture, rotate: boolean): WoodNodes {
+  let bySet = woodGraphs.get(set);
+  if (bySet === undefined) { bySet = new Map(); woodGraphs.set(set, bySet); }
+  const key = `${dustTex.uuid}:${rotate}`;
+  const cached = bySet.get(key);
+  if (cached !== undefined) return cached;
+  const repeat = materialReference('woodRepeat', 'vec2') as unknown as THREE.Node<'vec2'>;
+  const offset = materialReference('woodOffset', 'vec2') as unknown as THREE.Node<'vec2'>;
   const base = uv();
   const woodUV = rotate
-    ? vec2(base.y.mul(ru).add(0.5 - ru * 0.5 + ox), base.x.mul(-rv).add(0.5 + rv * 0.5 + oy))
-    : base.mul(vec2(ru, rv)).add(vec2(ox, oy));
+    ? vec2(base.y.mul(repeat.x).add(repeat.x.mul(-0.5).add(0.5).add(offset.x)), base.x.mul(repeat.y.negate()).add(repeat.y.mul(0.5).add(0.5).add(offset.y)))
+    : base.mul(repeat).add(offset);
   const arm = texture(set.arm, woodUV);
+  const dust = normalWorld.y.smoothstep(0.7, 1).mul(texture(dustTex, uv().mul(vec2(5, 1.4))).r.smoothstep(0.15, 0.9)).mul(materialReference('woodDust', 'float') as unknown as THREE.Node<'float'>);
+  const normalScale = materialReference('woodNormalScale', 'float') as unknown as THREE.Node<'float'>;
+  const nodes: WoodNodes = {
+    colorNode: mix(texture(set.diff, woodUV).rgb.mul(materialReference('woodTint', 'color') as unknown as THREE.Node<'vec3'>), color(0x9a9186), dust),
+    normalNode: normalMap(texture(set.nor, woodUV), vec2(normalScale, normalScale)),
+    roughnessNode: mix(arm.g, float(0.95), dust),
+    aoNode: arm.r,
+  };
+  bySet.set(key, nodes);
+  return nodes;
+}
+
+export function woodNodeMaterial(set: PbrSet, dustTex: THREE.Texture, options: WoodOptions): THREE.MeshPhysicalNodeMaterial {
+  const { ru, rv, rotate = false, ox = 0, oy = 0, coat = 0.3, coatRoughness = 0.32, tint = 0xd2c8c0, normalScale = 2.2, dust = 0.32, brightness = 1 } = options;
   const material = new THREE.MeshPhysicalNodeMaterial({
     roughness: 1, metalness: 0, clearcoat: coat, clearcoatRoughness: coatRoughness, specularIntensity: 0.5,
   });
-  const dust = normalWorld.y.smoothstep(0.7, 1).mul(texture(dustTex, uv().mul(vec2(5, 1.4))).r.smoothstep(0.15, 0.9)).mul(dustAmount);
-  material.colorNode = mix(texture(set.diff, woodUV).rgb.mul(color(new THREE.Color(tint)).mul(brightness)), color(0x9a9186), dust);
-  material.normalNode = normalMap(texture(set.nor, woodUV), vec2(normalScale, normalScale));
-  material.roughnessNode = mix(arm.g, float(0.95), dust);
-  material.aoNode = arm.r;
+  Object.assign(material, {
+    woodRepeat: new THREE.Vector2(ru, rv),
+    woodOffset: new THREE.Vector2(ox, oy),
+    woodTint: new THREE.Color(tint).multiplyScalar(brightness),
+    woodNormalScale: normalScale,
+    woodDust: dust,
+  }, woodNodes(set, dustTex, rotate));
   return material;
 }

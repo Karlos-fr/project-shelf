@@ -52,13 +52,19 @@ export type RoomSceneOptions = {
   roomBase: string;
   shelfBase: string;
   reducedMotion: boolean;
-  forceWebGL?: boolean;
   // Avancement du chargement, de 0 à 1 : textures, boîtes puis premier rendu.
   onProgress?: (fraction: number) => void;
 };
 
+// La chambre ne tourne qu'en WebGPU : le repli WebGL de Three.js compile ses shaders
+// un par un sur le fil principal et met plus d'une minute à charger la scène.
+export class WebGpuUnavailableError extends Error {
+  constructor() { super('WebGPU indisponible'); this.name = 'WebGpuUnavailableError'; }
+}
+
 export type RoomScene = {
-  backend: 'webgpu' | 'webgl';
+  // Moteur et carte graphique utilisés, par exemple « WebGPU · nvidia pascal ».
+  gpu: string;
   setView(view: RoomView): void;
   setActive(index: number): void;
   setZoom(index: number): void;
@@ -125,9 +131,13 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let done = 0;
   const report = (weight: number) => { done += weight; options.onProgress?.(Math.min(1, done / expected)); };
   const tick = <V>(weight: number) => (value: V): V => { report(weight); return value; };
-  const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, forceWebGL: options.forceWebGL === true });
+  const gpuApi = (navigator as Navigator & { gpu?: { requestAdapter(options?: { powerPreference?: string }): Promise<{ info?: { vendor?: string; architecture?: string } } | null> } }).gpu;
+  const adapter = await gpuApi?.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
+  if (adapter === null || adapter === undefined) throw new WebGpuUnavailableError();
+  const gpu = ['WebGPU', [adapter.info?.vendor, adapter.info?.architecture].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
   await renderer.init();
-  const backend: 'webgpu' | 'webgl' = (renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend === true ? 'webgpu' : 'webgl';
+  if ((renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend !== true) { renderer.dispose(); throw new WebGpuUnavailableError(); }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.2;
@@ -656,7 +666,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     return null;
   };
   return {
-    backend,
+    gpu,
     setView(next) {
       if (next === view) return;
       view = next;

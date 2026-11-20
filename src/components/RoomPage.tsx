@@ -68,6 +68,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const keyRef = useRef<((event: globalThis.KeyboardEvent) => void) | null>(null);
   const [sceneState, setSceneState] = useState<SceneState>('loading');
   const [progress, setProgress] = useState(0);
+  const [gpu, setGpu] = useState('');
+  const [noWebGpu, setNoWebGpu] = useState(false);
   const [view, setView] = useState<RoomView>('overview');
   const dragRef = useRef<{ x: number; moved: number } | null>(null);
   const draggedRef = useRef(false);
@@ -110,10 +112,16 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
       .then((scene) => {
         if (disposed) { scene.dispose(); return; }
         sceneRef.current = scene;
+        setGpu(scene.gpu);
         setSceneState('ready');
         clearFlag = window.setTimeout(() => writeCrashFlag(CRASH_FLAG, false), CRASH_GRACE_MS);
       })
-      .catch(() => { writeCrashFlag(CRASH_FLAG, false); if (!disposed) setSceneState('failed'); });
+      .catch((error: unknown) => {
+        writeCrashFlag(CRASH_FLAG, false);
+        if (disposed) return;
+        setNoWebGpu(error instanceof Error && error.name === 'WebGpuUnavailableError');
+        setSceneState('failed');
+      });
     const onResize = () => sceneRef.current?.resize();
     const onVisibility = () => sceneRef.current?.setRunning(document.visibilityState === 'visible');
     window.addEventListener('resize', onResize);
@@ -280,6 +288,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             <span className="room__percent">{progress} %</span>
           </div>
         )}
+        {sceneState === 'ready' && gpu !== '' && <span className="room__gpu">{gpu}</span>}
         {view === 'screen' && screenRect !== null && pc !== 'off' && (
           <div className={`room__screen is-${pc}`} style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}
             onClick={() => { if (pc === 'bios') setPc('boot'); else if (BOOTING.includes(pc)) setPc('on'); }}>
@@ -293,7 +302,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
         )}
       </div>
       <section className={sceneState === 'failed' ? 'room__fallback' : 'sr-only'} aria-labelledby="room-index">
-        {sceneState === 'failed' && <p>{messages.roomFailed}</p>}
+        {sceneState === 'failed' && <p>{noWebGpu ? messages.roomNoWebGpu : messages.roomFailed}</p>}
         <h2 id="room-index">{messages.roomIndex}</h2>
         <ul className="shelf__index">
           {summaries.map((project) => (
