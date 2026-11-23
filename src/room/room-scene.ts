@@ -12,6 +12,7 @@ import { texture, uv } from 'three/tsl';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RectAreaLightTexturesLib } from 'three/addons/lights/RectAreaLightTexturesLib.js';
+import { softPointShadow } from './soft-point-shadow.ts';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
@@ -185,14 +186,13 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   sun.target.position.set(-0.45, 0, -0.35);
   sun.position.copy(sun.target.position).add(new THREE.Vector3(1.5, 1.575, -1.25).multiplyScalar(3));
   sun.castShadow = true;
-  sun.shadow.mapSize.setScalar(4096);
+  sun.shadow.mapSize.setScalar(2048);
   sun.shadow.bias = -0.0003;
   sun.shadow.normalBias = 0.02;
-  // Rayon 0 : le PCF de Three.js en WebGPU fait tourner ses échantillons selon un bruit par
-  // pixel, qui dessinait une trame crépitante ; à 0, seul le filtrage bilinéaire matériel adoucit le bord.
+  // Ombre VSM : bord flouté une fois pour toutes dans la carte, sans le bruit par pixel du PCF.
   sun.shadow.radius = 3;
   sun.shadow.blurSamples = 8;
-  // La pièce est immobile : la carte d'ombre (4096²) n'est recalculée que quand une boîte bouge.
+  // La pièce est immobile : la carte d'ombre (2048²) n'est recalculée que quand une boîte bouge.
   sun.shadow.autoUpdate = false;
   sun.shadow.needsUpdate = true;
   Object.assign(sun.shadow.camera, { left: -3.8, right: 3.8, top: 3.8, bottom: -3.8, near: 0.5, far: 12 });
@@ -205,14 +205,14 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Ambiance : ciel neutre en haut, rebond clair du parquet en bas ; ce rebond éclaire
   // aussi le plafond, qui sinon paraissait presque noir.
   scene.add(new THREE.HemisphereLight(0xeef1f5, 0xb3a897, 0.8));
-  // Ampoule nue au bout de son fil, au milieu du plafond : ombres franches comme une vraie
-  // ampoule (rayon 0, sans bruit), carte recalculée seulement quand une boîte bouge.
+  // Ampoule nue au bout de son fil, au milieu du plafond : ombres nettes au bord légèrement
+  // dégradé, sans bruit (soft-point-shadow.ts), recalculées seulement quand une boîte bouge.
   const BULB = new THREE.Vector3(0, RH - 0.55, (BACK + FRONT) / 2);
   const bulbLight = new THREE.PointLight(0xffd9a8, 6, 0, 2);
   bulbLight.position.copy(BULB);
   bulbLight.castShadow = true;
   bulbLight.shadow.mapSize.setScalar(2048);
-  bulbLight.shadow.radius = 0;
+  (bulbLight.shadow as unknown as { filterNode: unknown }).filterNode = softPointShadow(1);
   bulbLight.shadow.bias = -0.002;
   bulbLight.shadow.normalBias = 0;
   Object.assign(bulbLight.shadow.camera, { near: 0.08, far: 6 });
@@ -436,6 +436,15 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let drawn = 0;
   const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); };
   const damp = (a: number, b: number, k: number, dt: number) => (reducedMotion ? b : a + (b - a) * (1 - Math.exp(-k * dt)));
+  // Boîte de l'étagère privée d'ombre pendant qu'elle est sortie (-1 : aucune).
+  let shadowless = -1;
+  const castShadows = (index: number, on: boolean) => {
+    model.placed[index]?.root.traverse((object) => {
+      if (!(object instanceof THREE.Mesh)) return;
+      if (!on) { object.userData.castShadow ??= object.castShadow; object.castShadow = false; }
+      else object.castShadow = object.userData.castShadow === true;
+    });
+  };
   // Pose de la caméra à l'image précédente, pour savoir si elle bouge.
   const lastView = new THREE.Matrix4();
   const scratch = new THREE.Vector3();
@@ -533,7 +542,18 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     lastView.copy(camera.matrixWorld);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
 
-    if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) { busy = true; sun.shadow.needsUpdate = true; bulbLight.shadow.needsUpdate = true; }
+    const boxesMoving = model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp);
+    if (boxesMoving) busy = true;
+    // La boîte sortie ne porte pas d'ombre : les cartes d'ombre (soleil, six faces de l'ampoule)
+    // ne sont recalculées qu'à sa sortie et à son retour, jamais à chaque image d'un mouvement.
+    if (active !== shadowless && (active >= 0 || !boxesMoving)) {
+      if (shadowless >= 0) castShadows(shadowless, true);
+      if (active >= 0) castShadows(active, false);
+      shadowless = active;
+      sun.shadow.needsUpdate = true;
+      bulbLight.shadow.needsUpdate = true;
+      busy = true;
+    }
     if (pc.update(performance.now())) busy = true;
     // Images du Photon virtuel reçues depuis le dernier rendu.
     const cubeChanged = cube.update(performance.now());
