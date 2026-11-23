@@ -69,6 +69,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [sceneState, setSceneState] = useState<SceneState>('loading');
   const [progress, setProgress] = useState(0);
   const [gpu, setGpu] = useState('');
+  // ?fps dans l'URL : la scène redessine en continu et affiche ses images par seconde.
+  const [fps, setFps] = useState<number | null>(null);
   const [noWebGpu, setNoWebGpu] = useState(false);
   const [view, setView] = useState<RoomView>('overview');
   // Glissé en cours : orbite autour du cube ou de l'île, ou, au doigt, regard dans les autres vues.
@@ -87,13 +89,15 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (canvas === null) return;
     let disposed = false;
     let clearFlag = 0;
+    let fpsTimer = 0;
     // Un chargement précédent n'a jamais abouti : on reste sur la version HTML.
     if (readCrashFlag(CRASH_FLAG)) { setSceneState('failed'); return; }
     writeCrashFlag(CRASH_FLAG, true);
+    const showFps = new URLSearchParams(window.location.search).has('fps');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     void import('../room/room-scene.ts')
       .then(({ createRoomScene }) => createRoomScene({
-        canvas, reducedMotion,
+        canvas, reducedMotion, continuous: showFps,
         onProgress: (fraction) => { if (!disposed) setProgress(Math.round(fraction * 100)); },
         roomBase: `${root}room/`,
         pc: {
@@ -114,6 +118,18 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
         if (disposed) { scene.dispose(); return; }
         sceneRef.current = scene;
         setGpu(scene.gpu);
+        if (showFps) {
+          let last = performance.now();
+          let count = scene.frames();
+          setFps(0);
+          fpsTimer = window.setInterval(() => {
+            const now = performance.now();
+            const frames = scene.frames();
+            setFps(Math.round((frames - count) * 1000 / (now - last)));
+            last = now;
+            count = frames;
+          }, 500);
+        }
         setSceneState('ready');
         clearFlag = window.setTimeout(() => writeCrashFlag(CRASH_FLAG, false), CRASH_GRACE_MS);
       })
@@ -130,6 +146,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     return () => {
       disposed = true;
       window.clearTimeout(clearFlag);
+      window.clearInterval(fpsTimer);
       writeCrashFlag(CRASH_FLAG, false);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
@@ -305,7 +322,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             <span className="room__percent">{progress} %</span>
           </div>
         )}
-        {sceneState === 'ready' && gpu !== '' && <span className="room__gpu">{gpu}</span>}
+        {sceneState === 'ready' && gpu !== '' && <span className="room__gpu">{gpu}{fps !== null && ` · ${fps} FPS`}</span>}
         {view === 'screen' && screenRect !== null && pc !== 'off' && (
           <div className={`room__screen is-${pc}`} style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}
             onClick={() => { if (pc === 'bios') setPc('boot'); else if (BOOTING.includes(pc)) setPc('on'); }}>

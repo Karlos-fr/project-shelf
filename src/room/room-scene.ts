@@ -54,6 +54,8 @@ export type RoomSceneOptions = {
   reducedMotion: boolean;
   // Avancement du chargement, de 0 à 1 : textures, boîtes puis premier rendu.
   onProgress?: (fraction: number) => void;
+  // Mesure (?fps dans l'URL) : redessine à chaque image, même quand rien ne bouge.
+  continuous?: boolean;
 };
 
 // La chambre ne tourne qu'en WebGPU : le repli WebGL de Three.js compile ses shaders
@@ -65,6 +67,8 @@ export class WebGpuUnavailableError extends Error {
 export type RoomScene = {
   // Moteur et carte graphique utilisés, par exemple « WebGPU · nvidia pascal ».
   gpu: string;
+  // Nombre d'images dessinées depuis le chargement, pour le compteur de FPS.
+  frames(): number;
   setView(view: RoomView): void;
   setActive(index: number): void;
   setZoom(index: number): void;
@@ -497,6 +501,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Images à rendre encore une fois la scène immobile, pour que le lissage temporel converge.
   const SETTLE_FRAMES = 90;
   let settle = SETTLE_FRAMES;
+  let drawn = 0;
   const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); settle = SETTLE_FRAMES; };
   const damp = (a: number, b: number, k: number, dt: number) => (reducedMotion ? b : a + (b - a) * (1 - Math.exp(-k * dt)));
   // Pose de la caméra à l'image précédente, pour savoir si elle bouge.
@@ -613,9 +618,10 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     lamp.target.position.lerp(aim, reducedMotion ? 1 : 1 - Math.exp(-3 * dt));
     lamp.intensity = damp(lamp.intensity, view !== 'shelf' ? 0 : item !== undefined ? 6 : 3, 3, dt);
     if (busy) settle = SETTLE_FRAMES;
-    if (busy || performance.now() < awakeUntil || settle > 0 || cubeChanged) {
+    if (busy || performance.now() < awakeUntil || settle > 0 || cubeChanged || options.continuous === true) {
       setQuality(moving);
       pipeline.render();
+      drawn += 1;
       settle -= 1;
     }
   }
@@ -695,6 +701,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   };
   return {
     gpu,
+    frames: () => drawn,
     setView(next) {
       if (next === view) return;
       view = next;
