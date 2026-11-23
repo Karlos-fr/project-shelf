@@ -25,6 +25,7 @@ import { bilateralBlur } from 'three/addons/tsl/display/BilateralBlurNode.js';
 import { depthAwareBlend } from 'three/addons/tsl/display/depthAwareBlend.js';
 import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
+import { AccumulateNode } from './accumulate-node.ts';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
@@ -475,9 +476,33 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const glow = bloom(clean, 0.22, 0.4, 1.1);
   const balanced = clean.rgb.add(glow.rgb).mul(vec3(0.92, 1.0, 1.1));
   const vignette = smoothstep(float(0.95), float(0.25), uv().sub(0.5).length());
-  // Pas de grain de film : son bruit, retiré à chaque image, faisait crépiter les murs et les
-  // zones d'ombre dès que la scène redessinait en continu.
-  pipeline.outputNode = vec4(balanced.mul(vignette.mul(0.35).add(0.65)), 1);
+  // À l'arrêt, moyenne exacte des images rendues : plus aucun crépitement (voir accumulate-node.ts).
+  const accumulate = new AccumulateNode(convertToTexture(vec4(balanced.mul(vignette.mul(0.35).add(0.65)), 1)));
+  pipeline.outputNode = accumulate as unknown as THREE.Node<'vec4'>;
+  // Images moyennées depuis le dernier mouvement ; au-delà de STILL_MAX, la moyenne glisse.
+  const STILL_MAX = 128;
+  let still = 0;
+  const cubeBox = new THREE.Box3();
+  const corner = new THREE.Vector3();
+  // Rectangle d'écran (0 à 1, origine en haut à gauche) couvrant ces points, avec une marge pour le halo.
+  const screenBox = (points: THREE.Vector3[], rect: THREE.Vector4) => {
+    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
+    for (const point of points) {
+      corner.copy(point).project(camera);
+      const x = (corner.x + 1) / 2; const y = (1 - corner.y) / 2;
+      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
+    }
+    rect.set(x0 - 0.03, y0 - 0.03, x1 + 0.03, y1 + 0.03);
+  };
+  // Coins du cube, immobile sur l'étagère : calculés une fois.
+  const cubeCorners = (() => {
+    const { min, max } = cubeBox.setFromObject(cube.group);
+    return [0, 1, 2, 3, 4, 5, 6, 7].map((i) => new THREE.Vector3(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z));
+  })();
+  const liveZones = () => {
+    screenBox(cubeCorners, accumulate.live[0]!.value);
+    screenBox(pc.screenCorners(), accumulate.live[1]!.value);
+  };
 
   // --------------------------------------------------------------- état et boucle
   let view: RoomView = 'overview';
@@ -556,6 +581,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   }
 
   function resize(): void {
+    still = 0;
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     renderer.setSize(rect.width, rect.height, false);
@@ -607,7 +633,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     lastView.copy(camera.matrixWorld);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
 
-    if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) { busy = true; sun.shadow.needsUpdate = true; }
+    const modelChanged = model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp);
+    if (modelChanged) { busy = true; sun.shadow.needsUpdate = true; }
     if (pc.update(performance.now())) busy = true;
     // Images du Photon virtuel reçues depuis le dernier rendu.
     const cubeChanged = cube.update(performance.now());
@@ -616,11 +643,19 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     const aim = item !== undefined
       ? model.group.localToWorld(scratch.set(item.root.position.x, 0.15, item.root.position.z))
       : scratch.set(SHELF.x, SHELF.y + 0.15, SHELF.z);
+    const lampFrom = lamp.intensity;
+    const lampMove = lamp.target.position.distanceTo(aim);
     lamp.target.position.lerp(aim, reducedMotion ? 1 : 1 - Math.exp(-3 * dt));
     lamp.intensity = damp(lamp.intensity, view !== 'shelf' ? 0 : item !== undefined ? 6 : 3, 3, dt);
+    const lampChanged = Math.abs(lamp.intensity - lampFrom) > 1e-3 || lampMove > 1e-4;
     if (busy) settle = SETTLE_FRAMES;
     if (busy || performance.now() < awakeUntil || settle > 0 || cubeChanged || options.continuous === true) {
       setQuality(moving);
+      // Caméra, boîtes ou lampe en mouvement : la moyenne repart de l'image courante.
+      if (moving || progress < 1 || modelChanged || lampChanged) still = 0;
+      still = Math.min(still + 1, STILL_MAX);
+      accumulate.weight.value = 1 / still;
+      liveZones();
       pipeline.render();
       drawn += 1;
       settle -= 1;
