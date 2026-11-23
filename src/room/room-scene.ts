@@ -60,7 +60,7 @@ export type RoomScene = {
   setZoom(index: number): void;
   // Vues du cube et de l'île LEGO : fait pivoter la caméra autour de l'objet, en radians (borné à ± 60° et ± 40°).
   orbitView(delta: number): void;
-  // Position du pointeur dans [-1, 1] sur chaque axe : léger effet de parallaxe.
+  // Position du pointeur dans [-1, 1] sur chaque axe : incline la boîte zoomée.
   setPointer(x: number, y: number): void;
   // Au doigt : tourne le regard depuis la position de la caméra, en radians (gauche, haut), borné.
   look(yaw: number, pitch: number): void;
@@ -205,6 +205,20 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Ambiance : ciel neutre en haut, rebond clair du parquet en bas ; ce rebond éclaire
   // aussi le plafond, qui sinon paraissait presque noir.
   scene.add(new THREE.HemisphereLight(0xeef1f5, 0xb3a897, 0.8));
+  // Ampoule nue au bout de son fil, au milieu du plafond : ombres franches comme une vraie
+  // ampoule (rayon 0, sans bruit), carte recalculée seulement quand une boîte bouge.
+  const BULB = new THREE.Vector3(0, RH - 0.55, (BACK + FRONT) / 2);
+  const bulbLight = new THREE.PointLight(0xffd9a8, 6, 0, 2);
+  bulbLight.position.copy(BULB);
+  bulbLight.castShadow = true;
+  bulbLight.shadow.mapSize.setScalar(2048);
+  bulbLight.shadow.radius = 0;
+  bulbLight.shadow.bias = -0.002;
+  bulbLight.shadow.normalBias = 0;
+  Object.assign(bulbLight.shadow.camera, { near: 0.08, far: 6 });
+  bulbLight.shadow.autoUpdate = false;
+  bulbLight.shadow.needsUpdate = true;
+  scene.add(bulbLight);
 
   // --------------------------------------------------------------- pièce
   const add = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material | THREE.Material[], x: number, y: number, z: number, shadows = true): THREE.Mesh => {
@@ -272,6 +286,15 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const outsideMaterial = keep(new THREE.MeshBasicNodeMaterial());
   outsideMaterial.colorNode = texture(outside, uv()).rgb.mul(1.9);
   add(room, new THREE.PlaneGeometry(9, 4.5), outsideMaterial, WIN.x + 0.6, 1.4, BACK - 3.2, false);
+
+  // Suspension : fil textile, douille en bakélite et ampoule allumée (elle n'arrête pas sa propre lumière).
+  const cordMaterial = keep(new THREE.MeshStandardNodeMaterial({ color: 0x1c1a18, roughness: 0.8 }));
+  add(room, new THREE.CylinderGeometry(0.004, 0.004, RH - BULB.y - 0.06, 8), cordMaterial, BULB.x, (RH + BULB.y + 0.06) / 2, BULB.z, false);
+  add(room, new THREE.CylinderGeometry(0.035, 0.035, 0.015, 24), cordMaterial, BULB.x, RH - 0.0075, BULB.z, false);
+  add(room, new THREE.CylinderGeometry(0.018, 0.02, 0.05, 20), keep(new THREE.MeshStandardNodeMaterial({ color: 0x2a2622, roughness: 0.45 })), BULB.x, BULB.y + 0.055, BULB.z, false);
+  const bulbGlass = keep(new THREE.MeshStandardNodeMaterial({ color: 0xfff4e0, emissive: 0xffd9a8, emissiveIntensity: 6, roughness: 0.3 }));
+  const bulb = add(room, new THREE.SphereGeometry(0.03, 24, 16), bulbGlass, BULB.x, BULB.y, BULB.z, false);
+  bulb.scale.set(1, 1.25, 1);
 
   // --------------------------------------------------------------- bureau en hêtre
   // Hêtre clair verni, comme la chaise et l'étagère : des meubles blonds des années 90.
@@ -415,8 +438,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const damp = (a: number, b: number, k: number, dt: number) => (reducedMotion ? b : a + (b - a) * (1 - Math.exp(-k * dt)));
   // Pose de la caméra à l'image précédente, pour savoir si elle bouge.
   const lastView = new THREE.Matrix4();
-  const right = new THREE.Vector3();
-  const up = new THREE.Vector3();
   const scratch = new THREE.Vector3();
 
   // Pose visée : la vue courante, ou une boîte de l'étagère vue de face.
@@ -488,22 +509,19 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     current.position.y += Math.sin(Math.PI * e) * 0.08 * from.position.distanceTo(goal.position);
     current.target.lerpVectors(from.target, goal.target, e);
     current.fov = from.fov + (goal.fov - from.fov) * e;
-    // Parallaxe : la tête bouge à peine avec la souris.
-    sway.x = damp(sway.x, pointer.x, 2.5, dt);
-    sway.y = damp(sway.y, pointer.y, 2.5, dt);
-    if (Math.abs(sway.x - pointer.x) > 0.002 || Math.abs(sway.y - pointer.y) > 0.002) busy = true;
-    scratch.subVectors(current.target, current.position).normalize();
-    right.crossVectors(scratch, THREE.Object3D.DEFAULT_UP).normalize();
-    up.crossVectors(right, scratch).normalize();
-    // Autour du cube et de l'île, le glissé fait tourner la caméra : pas de parallaxe en plus.
+    // La souris ne fait plus qu'incliner la boîte zoomée ; elle ne déplace pas la caméra.
+    sway.x = damp(sway.x, zoomed >= 0 ? pointer.x : 0, 2.5, dt);
+    sway.y = damp(sway.y, zoomed >= 0 ? pointer.y : 0, 2.5, dt);
+    if (Math.abs(sway.x - (zoomed >= 0 ? pointer.x : 0)) > 0.002) busy = true;
+    // Autour du cube et de l'île, le glissé fait tourner la caméra.
     const orbiting = view === 'cube' || view === 'lego';
     if (orbiting) {
       orbitShown = damp(orbitShown, orbit, 8, dt);
       if (Math.abs(orbitShown - orbit) > 0.0005) busy = true; else orbitShown = orbit;
       if (progress >= 1) goal = goalPose();
     }
-    const amount = view === 'screen' || orbiting ? 0 : zoomed >= 0 ? 0.012 : 0.05;
-    camera.position.copy(current.position).addScaledVector(right, sway.x * amount).addScaledVector(up, sway.y * amount * 0.5);
+    // Caméra fixe : la souris ne la déplace pas (reflets et arêtes fines glissaient avec elle).
+    camera.position.copy(current.position);
     gaze.yawShown = damp(gaze.yawShown, gaze.yaw, 10, dt);
     gaze.pitchShown = damp(gaze.pitchShown, gaze.pitch, 10, dt);
     if (Math.abs(gaze.yawShown - gaze.yaw) > 0.0005 || Math.abs(gaze.pitchShown - gaze.pitch) > 0.0005) busy = true;
@@ -515,7 +533,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     lastView.copy(camera.matrixWorld);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
 
-    if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) { busy = true; sun.shadow.needsUpdate = true; }
+    if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) { busy = true; sun.shadow.needsUpdate = true; bulbLight.shadow.needsUpdate = true; }
     if (pc.update(performance.now())) busy = true;
     // Images du Photon virtuel reçues depuis le dernier rendu.
     const cubeChanged = cube.update(performance.now());
@@ -621,7 +639,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       gaze.pitch = Math.max(-0.35, Math.min(0.35, gaze.pitch + pitch));
       wake();
     },
-    setPointer(x, y) { pointer.set(Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))); wake(900); },
+    setPointer(x, y) { pointer.set(Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))); if (zoomed >= 0) wake(900); },
     pick(clientX, clientY) {
       const rect = canvas.getBoundingClientRect();
       ndc.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
