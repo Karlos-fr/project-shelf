@@ -8,24 +8,10 @@
 // DOM hors du canvas fourni.
 // ============================================================================
 import * as THREE from 'three/webgpu';
-import {
-  builtinShadowContext, color, screenSize, convertToTexture, diffuseColor, float, metalness, mrt,
-  normalView, output, packNormalToRGB, pass, roughness, sample, screenUV, smoothstep, texture, unpackRGBToNormal,
-  uv, vec2, vec3, vec4, velocity,
-} from 'three/tsl';
+import { texture, uv } from 'three/tsl';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RectAreaLightTexturesLib } from 'three/addons/lights/RectAreaLightTexturesLib.js';
-import { traa } from 'three/addons/tsl/display/TRAANode.js';
-import { ssgi } from 'three/addons/tsl/display/SSGINode.js';
-import { ssr } from 'three/addons/tsl/display/SSRNode.js';
-import { sss } from 'three/addons/tsl/display/SSSNode.js';
-import { godrays } from 'three/addons/tsl/display/GodraysNode.js';
-import { bilateralBlur } from 'three/addons/tsl/display/BilateralBlurNode.js';
-import { depthAwareBlend } from 'three/addons/tsl/display/depthAwareBlend.js';
-import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
-import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { AccumulateNode } from './accumulate-node.ts';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
@@ -145,14 +131,14 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const adapter = await gpuApi?.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
   if (adapter === null || adapter === undefined) throw new WebGpuUnavailableError();
   const gpu = ['WebGPU', [adapter.info?.vendor, adapter.info?.architecture].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
-  const renderer = new THREE.WebGPURenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
   await renderer.init();
   if ((renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend !== true) { renderer.dispose(); throw new WebGpuUnavailableError(); }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.2;
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.type = THREE.VSMShadowMap;
   const maxAniso = renderer.getMaxAnisotropy();
   THREE.RectAreaLightNode.setLTC(RectAreaLightTexturesLib.init());
 
@@ -202,7 +188,10 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   sun.shadow.mapSize.setScalar(4096);
   sun.shadow.bias = -0.0003;
   sun.shadow.normalBias = 0.02;
-  sun.shadow.radius = 5;
+  // Rayon 0 : le PCF de Three.js en WebGPU fait tourner ses échantillons selon un bruit par
+  // pixel, qui dessinait une trame crépitante ; à 0, seul le filtrage bilinéaire matériel adoucit le bord.
+  sun.shadow.radius = 3;
+  sun.shadow.blurSamples = 8;
   // La pièce est immobile : la carte d'ombre (4096²) n'est recalculée que quand une boîte bouge.
   sun.shadow.autoUpdate = false;
   sun.shadow.needsUpdate = true;
@@ -214,13 +203,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   skyLight.lookAt(WIN.x, (WIN.y0 + WIN.y1) / 2, 0);
   scene.add(skyLight);
   // Ambiance : ciel neutre en haut, rebond clair du parquet en bas ; ce rebond éclaire
-  // aussi le plafond, qui sinon paraissait presque noir. La GI d'écran complète.
+  // aussi le plafond, qui sinon paraissait presque noir.
   scene.add(new THREE.HemisphereLight(0xeef1f5, 0xb3a897, 0.8));
-  // Lampe d'accent qui suit la boîte sortie de l'étagère.
-  const lamp = new THREE.SpotLight(0xfff2e0, 0, 4, 0.42, 0.85, 1.4);
-  lamp.position.set(-0.7, 2.25, SHELF.z + 0.35);
-  lamp.target.position.set(SHELF.x, SHELF.y + 0.15, SHELF.z);
-  scene.add(lamp, lamp.target);
 
   // --------------------------------------------------------------- pièce
   const add = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material | THREE.Material[], x: number, y: number, z: number, shadows = true): THREE.Mesh => {
@@ -406,104 +390,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   model.group.userData.zone = 'shelf';
   scene.add(model.group);
 
-  // --------------------------------------------------------------- pipeline de rendu
-  const pipeline = new THREE.RenderPipeline(renderer);
-  const prePass = pass(scene, camera);
-  prePass.transparent = false;
-  prePass.setMRT(mrt({ output: packNormalToRGB(normalView), velocity }));
-  prePass.getTexture('output').type = THREE.UnsignedByteType;
-  const preNormal = sample((st) => unpackRGBToNormal(prePass.getTextureNode().sample(st)));
-  const preDepth = prePass.getTextureNode('depth');
-  const preVelocity = prePass.getTextureNode('velocity');
-  const contact = sss(preDepth, camera, sun);
-  contact.resolutionScale = 0.5;
-  contact.maxDistance.value = 0.08;
-  contact.thickness.value = 0.006;
-  contact.useTemporalFiltering = true;
-  const scenePass = pass(scene, camera);
-  scenePass.contextNode = builtinShadowContext(contact.getTextureNode().sample(screenUV).r, sun);
-  scenePass.setMRT(mrt({ output, diffuseColor, metalrough: vec2(metalness, roughness) }));
-  scenePass.getTexture('diffuseColor').type = THREE.UnsignedByteType;
-  scenePass.getTexture('metalrough').type = THREE.UnsignedByteType;
-  const beauty = scenePass.getTextureNode('output');
-  // Lumière indirecte : le soleil rebondit sur le parquet et réchauffe les murs.
-  const gi = ssgi(beauty, preDepth, preNormal, camera);
-  gi.resolutionScale = 0.5;
-  // Préréglage « High » avec filtrage temporel : moins de grain à convergence égale.
-  gi.sliceCount.value = 3;
-  gi.stepCount.value = 12;
-  gi.radius.value = 2.5;
-  gi.thickness.value = 0.1;
-  gi.giIntensity.value = 1.3;
-  const albedo = scenePass.getTextureNode('diffuseColor');
-  // Flou 1-2-1 sur 3 x 3 texels de la lumière indirecte, lue dans sa texture à demi-résolution :
-  // il gomme le grain du SSGI (surtout visible caméra en mouvement), sans passe de plus.
-  const giTexel = vec2(2).div(screenSize);
-  let giAo: THREE.Node<'vec4'> = vec4(0);
-  for (const dx of [-1, 0, 1]) {
-    for (const dy of [-1, 0, 1]) {
-      const at = screenUV.add(vec2(dx, dy).mul(giTexel));
-      const weight = ((dx === 0 ? 2 : 1) * (dy === 0 ? 2 : 1)) / 16;
-      giAo = giAo.add(vec4(gi.getGINode().sample(at).rgb, gi.getAONode().sample(at).r).mul(weight));
-    }
-  }
-  let lit: THREE.Node<'vec4'> = vec4(beauty.rgb.mul(giAo.a).add(albedo.rgb.mul(giAo.rgb)), beauty.a);
-  // Réflexions du vernis et du parquet.
-  const metalRough = scenePass.getTextureNode('metalrough');
-  const reflections = ssr(convertToTexture(lit), preDepth, preNormal, { metalnessNode: metalRough.r, roughnessNode: metalRough.g, reflectNonMetals: true, camera });
-  reflections.resolutionScale = 0.5;
-  reflections.maxDistance.value = 1.6;
-  reflections.thickness.value = 0.03;
-  reflections.intensity.value = 0.5;
-  lit = vec4(lit.rgb.add(reflections.rgb), 1);
-  // Rayons de soleil dans la poussière, depuis la fenêtre.
-  const rays = godrays(preDepth, camera, sun);
-  rays.density.value = 0.3;
-  rays.maxDensity.value = 0.14;
-  rays.raymarchSteps.value = 56;
-  lit = depthAwareBlend(convertToTexture(lit), bilateralBlur(rays.getTextureNode()).getTextureNode(), preDepth, camera,
-    { blendColor: color(0xfff1dc), edgeRadius: 2, edgeStrength: 2 });
-  // Qualité adaptative : caméra en mouvement, moins d'échantillons pour SSGI, SSR et rayons
-  // (le lissage temporel repart de toute façon de zéro) ; à l'arrêt, la pleine qualité revient
-  // pour les images de convergence. Ce sont des uniformes : rien n'est recompilé.
-  const setQuality = (moving: boolean) => {
-    gi.sliceCount.value = moving ? 1 : 3;
-    gi.stepCount.value = moving ? 6 : 12;
-    reflections.quality.value = moving ? 0.25 : 0.5;
-    rays.raymarchSteps.value = moving ? 16 : 56;
-  };
-  const clean = sharpen(traa(lit, preDepth, preVelocity, camera), 0.15);
-  const glow = bloom(clean, 0.22, 0.4, 1.1);
-  const balanced = clean.rgb.add(glow.rgb).mul(vec3(0.92, 1.0, 1.1));
-  const vignette = smoothstep(float(0.95), float(0.25), uv().sub(0.5).length());
-  // À l'arrêt, moyenne exacte des images rendues : plus aucun crépitement (voir accumulate-node.ts).
-  const accumulate = new AccumulateNode(convertToTexture(vec4(balanced.mul(vignette.mul(0.35).add(0.65)), 1)));
-  pipeline.outputNode = accumulate as unknown as THREE.Node<'vec4'>;
-  // Images moyennées depuis le dernier mouvement ; au-delà de STILL_MAX, la moyenne glisse.
-  const STILL_MAX = 128;
-  let still = 0;
-  const cubeBox = new THREE.Box3();
-  const corner = new THREE.Vector3();
-  // Rectangle d'écran (0 à 1, origine en haut à gauche) couvrant ces points, avec une marge pour le halo.
-  const screenBox = (points: THREE.Vector3[], rect: THREE.Vector4) => {
-    let x0 = Infinity; let y0 = Infinity; let x1 = -Infinity; let y1 = -Infinity;
-    for (const point of points) {
-      corner.copy(point).project(camera);
-      const x = (corner.x + 1) / 2; const y = (1 - corner.y) / 2;
-      x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y);
-    }
-    rect.set(x0 - 0.03, y0 - 0.03, x1 + 0.03, y1 + 0.03);
-  };
-  // Coins du cube, immobile sur l'étagère : calculés une fois.
-  const cubeCorners = (() => {
-    const { min, max } = cubeBox.setFromObject(cube.group);
-    return [0, 1, 2, 3, 4, 5, 6, 7].map((i) => new THREE.Vector3(i & 1 ? max.x : min.x, i & 2 ? max.y : min.y, i & 4 ? max.z : min.z));
-  })();
-  const liveZones = () => {
-    screenBox(cubeCorners, accumulate.live[0]!.value);
-    screenBox(pc.screenCorners(), accumulate.live[1]!.value);
-  };
-
   // --------------------------------------------------------------- état et boucle
   let view: RoomView = 'overview';
   let active = -1;
@@ -524,11 +410,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let from: Pose = clonePose(current);
   let goal: Pose = clonePose(current);
   let progress = 1;
-  // Images à rendre encore une fois la scène immobile, pour que le lissage temporel converge.
-  const SETTLE_FRAMES = 90;
-  let settle = SETTLE_FRAMES;
   let drawn = 0;
-  const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); settle = SETTLE_FRAMES; };
+  const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); };
   const damp = (a: number, b: number, k: number, dt: number) => (reducedMotion ? b : a + (b - a) * (1 - Math.exp(-k * dt)));
   // Pose de la caméra à l'image précédente, pour savoir si elle bouge.
   const lastView = new THREE.Matrix4();
@@ -581,7 +464,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   }
 
   function resize(): void {
-    still = 0;
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
     renderer.setSize(rect.width, rect.height, false);
@@ -633,38 +515,19 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     lastView.copy(camera.matrixWorld);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
 
-    const modelChanged = model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp);
-    if (modelChanged) { busy = true; sun.shadow.needsUpdate = true; }
+    if (model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp)) { busy = true; sun.shadow.needsUpdate = true; }
     if (pc.update(performance.now())) busy = true;
     // Images du Photon virtuel reçues depuis le dernier rendu.
     const cubeChanged = cube.update(performance.now());
-    // La lampe d'accent s'allume sur l'étagère et suit la boîte sortie.
-    const item = active >= 0 ? model.placed[active] : undefined;
-    const aim = item !== undefined
-      ? model.group.localToWorld(scratch.set(item.root.position.x, 0.15, item.root.position.z))
-      : scratch.set(SHELF.x, SHELF.y + 0.15, SHELF.z);
-    const lampFrom = lamp.intensity;
-    const lampMove = lamp.target.position.distanceTo(aim);
-    lamp.target.position.lerp(aim, reducedMotion ? 1 : 1 - Math.exp(-3 * dt));
-    lamp.intensity = damp(lamp.intensity, view !== 'shelf' ? 0 : item !== undefined ? 6 : 3, 3, dt);
-    const lampChanged = Math.abs(lamp.intensity - lampFrom) > 1e-3 || lampMove > 1e-4;
-    if (busy) settle = SETTLE_FRAMES;
-    if (busy || performance.now() < awakeUntil || settle > 0 || cubeChanged || options.continuous === true) {
-      setQuality(moving);
-      // Caméra, boîtes ou lampe en mouvement : la moyenne repart de l'image courante.
-      if (moving || progress < 1 || modelChanged || lampChanged) still = 0;
-      still = Math.min(still + 1, STILL_MAX);
-      accumulate.weight.value = 1 / still;
-      liveZones();
-      pipeline.render();
+    if (busy || moving || performance.now() < awakeUntil || cubeChanged || options.continuous === true) {
+      renderer.render(scene, camera);
       drawn += 1;
-      settle -= 1;
     }
   }
 
   resize();
   // Le premier rendu compile tous les shaders : c'est la dernière étape de la barre.
-  pipeline.render();
+  renderer.render(scene, camera);
   report(4);
   wake(5000);
   renderer.setAnimationLoop(frame);
@@ -797,7 +660,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       virtualCube.dispose();
       model.disposeVideos();
       for (const value of disposables) value.dispose();
-      pipeline.dispose();
       renderer.dispose();
     },
   };
