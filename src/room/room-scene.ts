@@ -11,7 +11,7 @@ import * as THREE from 'three/webgpu';
 import {
   builtinShadowContext, color, screenSize, convertToTexture, diffuseColor, float, metalness, mrt,
   normalView, output, packNormalToRGB, pass, roughness, sample, screenUV, smoothstep, texture, unpackRGBToNormal,
-  uniform, uv, vec2, vec3, vec4, velocity,
+  uv, vec2, vec3, vec4, velocity,
 } from 'three/tsl';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
@@ -25,7 +25,6 @@ import { bilateralBlur } from 'three/addons/tsl/display/BilateralBlurNode.js';
 import { depthAwareBlend } from 'three/addons/tsl/display/depthAwareBlend.js';
 import { sharpen } from 'three/addons/tsl/display/SharpenNode.js';
 import { bloom } from 'three/addons/tsl/display/BloomNode.js';
-import { film } from 'three/addons/tsl/display/FilmNode.js';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { buildPoster, POSTER_FILE } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
@@ -476,7 +475,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const glow = bloom(clean, 0.22, 0.4, 1.1);
   const balanced = clean.rgb.add(glow.rgb).mul(vec3(0.92, 1.0, 1.1));
   const vignette = smoothstep(float(0.95), float(0.25), uv().sub(0.5).length());
-  pipeline.outputNode = film(vec4(balanced.mul(vignette.mul(0.35).add(0.65)), 1), uniform(0.04));
+  // Pas de grain de film : son bruit, retiré à chaque image, faisait crépiter les murs et les
+  // zones d'ombre dès que la scène redessinait en continu.
+  pipeline.outputNode = vec4(balanced.mul(vignette.mul(0.35).add(0.65)), 1);
 
   // --------------------------------------------------------------- état et boucle
   let view: RoomView = 'overview';
