@@ -1,9 +1,10 @@
 // ============================================================================
 // RoomScene — Chambre de la fin des années 90, en 3D temps réel
 // ----------------------------------------------------------------------------
-// Ce module client construit la pièce (murs, parquet, fenêtre ensoleillée, rideaux),
-// le bureau en pin, la chaise paysanne en hêtre paillée et l'étagère en noyer avec
-// les projets sortis en boîte. La caméra passe d'un point de vue fixe à l'autre ; le
+// Ce module client construit la pièce (murs, parquet, fenêtre ensoleillée, porte),
+// le bureau en hêtre, la chaise paysanne paillée, l'étagère en pin avec les projets
+// sortis en boîte, et les affiches (X-Files au-dessus du bureau, Alerte à Malibu à
+// côté de l'étagère). La caméra passe d'un point de vue fixe à l'autre ; le
 // composant React choisit la vue, l'objet actif et le zoom. Rien ne lit l'URL ni le
 // DOM hors du canvas fourni.
 // ============================================================================
@@ -14,7 +15,7 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 import { RectAreaLightTexturesLib } from 'three/addons/lights/RectAreaLightTexturesLib.js';
 import { softPointShadow } from './soft-point-shadow.ts';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
-import { buildPoster, POSTER_FILE } from './poster.ts';
+import { BAYWATCH_POSTER, buildPoster, X_FILES_POSTER } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
 import { buildL3dCube, POWER_JACK } from './l3d-cube.ts';
 import { startVirtualCube } from './virtual-cube.ts';
@@ -25,9 +26,9 @@ import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
-export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'cube' | 'lego';
+export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'baywatch' | 'cube' | 'lego';
 // Zone cliquable : un meuble qui mène à une vue.
-export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'switch' | 'poster' | 'cube' | 'lego';
+export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'switch' | 'poster' | 'baywatch' | 'cube' | 'lego';
 export type RoomHit = { zone: RoomZone | null; index: number };
 
 export type RoomSceneOptions = {
@@ -100,6 +101,8 @@ const BEECH = { tint: 0xf7dcc0, brightness: 1.25, normalScale: 0.9 } as const;
 const DESK = { x: -0.15, z: BACK + 0.38, w: 1.4, d: 0.7, h: 0.74 };
 // Affiche collée à la pâte à fixe au mur du fond, au-dessus du bureau.
 const POSTER = { x: -0.32, y: 1.64 };
+// Affiche d'Alerte à Malibu au mur de gauche, entre l'étagère et le mur d'entrée.
+const BAYWATCH = { y: 1.5, z: 0.52 };
 // Porte de la chambre, au milieu de la moitié gauche du mur d'entrée (z = FRONT).
 const DOOR = { x: -0.95 };
 // Point de vue au milieu de la pièce, d'où l'on voit la porte en se retournant.
@@ -121,6 +124,7 @@ const VIEWS: Record<RoomView, Pose> = {
   overview: pose([1.5, 1.55, 1.6], [-0.55, 0.88, -0.85], 52),
   desk: pose([-0.12, 1.36, 0.02], [-0.16, 0.9, -1.3], 42),
   poster: pose([POSTER.x + 0.04, POSTER.y, BACK + 1.75], [POSTER.x, POSTER.y, BACK], 40),
+  baywatch: pose([-RX + 1.4, BAYWATCH.y, BAYWATCH.z + 0.03], [-RX, BAYWATCH.y, BAYWATCH.z], 40),
   // Calculée à la volée face à la dalle ; cette pose ne sert que de repli.
   screen: pose([-0.1, 0.98, -0.5], [-0.1, 0.98, -1.2], 30),
   shelf: pose([0.05, SHELF.y - 0.02, SHELF.z], [SHELF.x, SHELF.y - 0.12, SHELF.z], 44),
@@ -179,12 +183,13 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Objets chargés à part (images, maillages, boîtes) : tous lancés d'un coup, chacun attendu
   // seulement là où il prend place, pour que téléchargements et décodages se chevauchent.
   const magazinesLoad = buildMagazineStack(keep, roomBase, maxAniso);
-  const posterLoad = buildPoster(keep, `${roomBase}${POSTER_FILE}`, maxAniso);
+  const posterLoad = buildPoster(keep, roomBase, X_FILES_POSTER, maxAniso);
+  const baywatchLoad = buildPoster(keep, roomBase, BAYWATCH_POSTER, maxAniso);
   const pcLoad = buildPc({ keep, maxAniso, smudgeTex, ...options.pc });
   const islandLoad = buildLegoMoc(keep, `${roomBase}moc/ile-du-tresor.bin`).catch(() => null);
   const modelLoad = buildShelfModel({ keep, assetBase: shelfBase, lite: false, maxAniso, wood: beech, dustTex, smudgeTex, onItem: () => report(3) }, items, SHELF.width, { furniture: false, plaques: false });
   // Un échec reste signalé à l'attente ; il ne doit pas l'être en plus comme rejet non traité.
-  for (const load of [magazinesLoad, posterLoad, pcLoad, modelLoad]) load.catch(() => undefined);
+  for (const load of [magazinesLoad, posterLoad, baywatchLoad, pcLoad, modelLoad]) load.catch(() => undefined);
 
   // --------------------------------------------------------------- lumière
   // Le HDRI d'un vrai salon (Poly Haven, CC0) donne reflets et lumière ambiante, atténués :
@@ -372,6 +377,12 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   poster.position.set(POSTER.x, POSTER.y, BACK + 0.0005);
   poster.userData.zone = 'poster';
   scene.add(poster);
+  // Alerte à Malibu au mur de gauche, tournée vers la pièce.
+  const baywatch = await baywatchLoad;
+  baywatch.position.set(-RX + 0.0005, BAYWATCH.y, BAYWATCH.z);
+  baywatch.rotation.y = Math.PI / 2;
+  baywatch.userData.zone = 'baywatch';
+  scene.add(baywatch);
 
   // --------------------------------------------------------------- ordinateur
   const pc = await pcLoad;
@@ -730,7 +741,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       // L'île LEGO est petite et ajourée : toute sa boîte englobante est cliquable.
       const onIsland = islandFrame === null ? null : raycaster.ray.intersectBox(islandFrame.bounds, islandHit);
       if (onIsland !== null && onIsland.distanceTo(raycaster.ray.origin) < (item?.distance ?? Infinity)) return { zone: 'lego', index: -1 };
-      const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, cube.group, model.group, poster, room], true)[0];
+      const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, cube.group, model.group, poster, baywatch, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
     },

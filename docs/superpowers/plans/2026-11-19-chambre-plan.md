@@ -47,6 +47,7 @@ Game Boy, Walkman rouge, disquettes, CD, magazines PC Team. La liste sera compl�
 ### Posters
 - La page n'affiche que la vue 3D : ni boutons de vue, ni étiquettes, ni légende. On clique dans la pièce ; un clic à côté ou Échap recule.
 - ✅ Poster « I WANT TO BELIEVE » au-dessus du bureau (src/room/poster.ts) : affiche officielle (Pyramid Posters, photo de Billy Meier de 1975), collée à la pâte à fixe ; un clic dessus place la caméra en face.
+- ✅ Poster d'Alerte à Malibu (Pamela Anderson en C.J. Parker sur la plage, format 23 x 35 pouces) au mur de gauche, entre l'étagère et la porte (src/room/poster.ts) ; un clic dessus place la caméra en face.
 - Posters muraux d'esprit années 90. Le contenu est à définir ; une idée est de faire de fausses affiches d'époque pour les projets.
 
 ### Fabrication des modèles
