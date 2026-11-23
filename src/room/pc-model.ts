@@ -7,7 +7,7 @@
 // L'écran affiche le bureau façon XP peint sur une toile.
 // ============================================================================
 import * as THREE from 'three/webgpu';
-import { float, texture, uv } from 'three/tsl';
+import { float, lights, max, output, texture, uv, vec4 } from 'three/tsl';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { canvas2d, loadImage, printNormal } from '../shelf/shelf-materials.ts';
 import { SHORTCUT_SVG, svgUrl, XP_CORNER, XP_HEIGHT, XP_TASKBAR, XP_WIDTH, type XP_FILES } from '../xp/xp-art.ts';
@@ -41,6 +41,12 @@ export type PcModel = {
   setPower(state: PcPower): void;
   // Ce qu'affiche la dalle 3D pendant les séquences, quand l'interface HTML n'est pas devant.
   setScreen(phase: PcScreen): void;
+  // Interface HTML affichée sous le canvas : la dalle ne dessine plus que ses reflets, ajoutés
+  // par-dessus (alpha 0 sur un canvas prémultiplié) ; sans elle, l'image peinte revient.
+  setOverlay(on: boolean): void;
+  // Environnement que reflète la vitre : la chambre elle-même, photographiée depuis l'écran ;
+  // sceneLights : lumières de la pièce, dont la vitre garde tout sauf la lueur de l'écran.
+  setReflection(environment: THREE.Texture, sceneLights: THREE.Light[]): void;
   // Enfonce le bouton d'alimentation, qui remonte aussitôt (environ un quart de seconde).
   pressPower(): void;
   // Anime le bouton et le voyant du disque dur ; retour : vrai tant qu'il faut redessiner.
@@ -283,9 +289,34 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
 
   let powerState: PcPower = 'on';
   let pressedAt = -1;
+  let overlay = false;
   const powerRestZ = power.position.z;
   return {
     group, monitor, tower,
+    setReflection(environment, sceneLights) {
+      glass.envMap = environment;
+      // La lueur que l'écran projette sur la pièce, posée juste devant lui, ne se reflète pas dans sa propre vitre.
+      glass.lightsNode = lights(sceneLights.filter((light) => light !== spill));
+      glass.needsUpdate = true;
+    },
+    setOverlay(on) {
+      if (on === overlay) return;
+      overlay = on;
+      // Écrit les reflets tels quels, avec un alpha égal à leur intensité affichée : le canvas
+      // (prémultiplié) compose alors écran HTML × (1 - alpha) + reflet, comme une vraie vitre.
+      // L'alpha suit la valeur après encodage sRGB (≈ puissance 1/2,2), pour ne jamais être
+      // inférieur à la couleur, que le navigateur écrêterait.
+      glass.blending = on ? THREE.CustomBlending : THREE.NormalBlending;
+      glass.blendSrc = THREE.OneFactor;
+      glass.blendDst = THREE.ZeroFactor;
+      glass.blendSrcAlpha = THREE.OneFactor;
+      glass.blendDstAlpha = THREE.ZeroFactor;
+      // Sans teinte diffuse : seuls les reflets (ampoule, fenêtre, pièce) s'ajoutent à l'image.
+      glass.color.setHex(on ? 0x000000 : 0x0a0b0a);
+      glass.outputNode = on ? vec4(output.rgb, max(output.r, max(output.g, output.b)).mul(1.2).clamp(0, 1).pow(1 / 2.2)) : null;
+      glass.emissiveIntensity = !on && powerState !== 'off' ? 0.95 : 0;
+      glass.needsUpdate = true;
+    },
     setPower(state) {
       powerState = state;
       const on = state !== 'off';
@@ -294,7 +325,7 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
       monitorLed.color.setHex(on ? 0x1f8f2a : 0x8a5a10);
       monitorLed.emissiveIntensity = on ? 2 : 1.4;
       // Allumé ou occupé, la dalle s'éclaire ; éteint, elle redevient un verre noir.
-      glass.emissiveIntensity = on ? 0.95 : 0;
+      glass.emissiveIntensity = on && !overlay ? 0.95 : 0;
       spill.intensity = state === 'on' ? 0.35 : on ? 0.15 : 0;
       diskLed.emissiveIntensity = 0.2;
     },

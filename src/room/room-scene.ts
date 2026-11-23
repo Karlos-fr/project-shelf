@@ -20,13 +20,14 @@ import { buildL3dCube, POWER_JACK } from './l3d-cube.ts';
 import { startVirtualCube } from './virtual-cube.ts';
 import { buildLegoMoc } from './lego-moc.ts';
 import { buildOutlet } from './outlet.ts';
+import { buildDoor, buildLightSwitch, DOOR_W } from './door.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
 export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'cube' | 'lego';
 // Zone cliquable : un meuble qui mène à une vue.
-export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'poster' | 'cube' | 'lego';
+export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'switch' | 'poster' | 'cube' | 'lego';
 export type RoomHit = { zone: RoomZone | null; index: number };
 
 export type RoomSceneOptions = {
@@ -63,11 +64,19 @@ export type RoomScene = {
   orbitView(delta: number): void;
   // Position du pointeur dans [-1, 1] sur chaque axe : incline la boîte zoomée.
   setPointer(x: number, y: number): void;
-  // Au doigt : tourne le regard depuis la position de la caméra, en radians (gauche, haut), borné.
+  // Tourne le regard depuis la position de la caméra, en radians (gauche, haut) : tour complet
+  // depuis la vue d'ensemble, borné ailleurs.
   look(yaw: number, pitch: number): void;
+  // Interrupteur de la porte : allume ou éteint l'ampoule du plafond.
+  toggleLight(): void;
   pick(clientX: number, clientY: number): RoomHit;
   // Rectangle de la dalle du CRT dans le canvas, en pixels CSS, une fois la caméra arrivée.
-  screenRect(): { left: number; top: number; width: number; height: number } | null;
+  // Coins de la dalle du CRT projetés dans le canvas, en pixels CSS (haut gauche, haut droit,
+  // bas droit, bas gauche), quand elle fait face à la caméra ; sinon null.
+  screenQuad(): [[number, number], [number, number], [number, number], [number, number]] | null;
+  // Interface HTML placée sous le canvas, sur la dalle : la vitre n'y ajoute plus que ses reflets,
+  // et tout objet devant l'écran le cache au pixel près.
+  setScreenOverlay(on: boolean): void;
   setPower(state: PcPower): void;
   setScreen(phase: PcScreen): void;
   pressPower(): void;
@@ -91,6 +100,10 @@ const BEECH = { tint: 0xf7dcc0, brightness: 1.25, normalScale: 0.9 } as const;
 const DESK = { x: -0.15, z: BACK + 0.38, w: 1.4, d: 0.7, h: 0.74 };
 // Affiche collée à la pâte à fixe au mur du fond, au-dessus du bureau.
 const POSTER = { x: -0.32, y: 1.64 };
+// Porte de la chambre, au milieu de la moitié gauche du mur d'entrée (z = FRONT).
+const DOOR = { x: -0.95 };
+// Point de vue au milieu de la pièce, d'où l'on voit la porte en se retournant.
+const ROOM_EYE = new THREE.Vector3(0.4, 1.5, 0.1);
 // Étagère en pin posée au sol contre le mur de gauche : les boîtes sont au 4e niveau, à hauteur des yeux.
 const SHELF = { x: -RX + RACK_DEPTH / 2 + 0.01, y: RACK_LEVELS[3], z: -0.3, width: RACK_WIDTH - 0.04 };
 
@@ -132,7 +145,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const adapter = await gpuApi?.requestAdapter({ powerPreference: 'high-performance' }).catch(() => null);
   if (adapter === null || adapter === undefined) throw new WebGpuUnavailableError();
   const gpu = ['WebGPU', [adapter.info?.vendor, adapter.info?.architecture].filter(Boolean).join(' ')].filter(Boolean).join(' · ');
-  const renderer = new THREE.WebGPURenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+  const renderer = new THREE.WebGPURenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
   await renderer.init();
   if ((renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend !== true) { renderer.dispose(); throw new WebGpuUnavailableError(); }
   renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -260,6 +273,20 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   skirting(WIN.w, 0.016, WIN.x, BACK + 0.008);
   skirting(0.016, FRONT - BACK, -RX + 0.008, (BACK + FRONT) / 2);
   skirting(0.016, FRONT - BACK, RX - 0.008, (BACK + FRONT) / 2);
+  // Mur d'entrée, derrière la vue d'ensemble : porte blanche et interrupteur côté poignée.
+  const doorLeft = DOOR.x - DOOR_W / 2 - 0.07;
+  const doorRight = DOOR.x + DOOR_W / 2 + 0.07;
+  skirting(doorLeft + RX, 0.016, (doorLeft - RX) / 2, FRONT - 0.008);
+  skirting(RX - doorRight, 0.016, (RX + doorRight) / 2, FRONT - 0.008);
+  const door = buildDoor(keep);
+  door.position.set(DOOR.x, 0, FRONT);
+  door.rotation.y = Math.PI;
+  room.add(door);
+  const lightSwitch = buildLightSwitch(keep);
+  lightSwitch.group.position.set(doorRight + 0.12, 1.1, FRONT);
+  lightSwitch.group.rotation.y = Math.PI;
+  lightSwitch.setOn(true);
+  room.add(lightSwitch.group);
 
   // --------------------------------------------------------------- fenêtre
   // Croisée à deux battants et petits bois, en retrait dans l'embrasure.
@@ -424,6 +451,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let orbitShown = 0;
   // Regard tourné au doigt (lacet, tangage), visé puis affiché avec amortissement.
   const gaze = { yaw: 0, pitch: 0, yawShown: 0, pitchShown: 0 };
+  let lightOn = true;
   const gazeAim = new THREE.Vector3();
   const pointer = new THREE.Vector2();
   const sway = new THREE.Vector2();
@@ -531,6 +559,12 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     }
     // Caméra fixe : la souris ne la déplace pas (reflets et arêtes fines glissaient avec elle).
     camera.position.copy(current.position);
+    // Vue d'ensemble : plus on se retourne, plus la tête s'avance vers le milieu de la pièce,
+    // sinon le coin où elle se tient ne montre que le mur d'en face.
+    if (view === 'overview') {
+      const turn = Math.min(1, Math.abs(Math.atan2(Math.sin(gaze.yawShown), Math.cos(gaze.yawShown))) / (Math.PI / 2));
+      camera.position.lerp(ROOM_EYE, turn * turn * (3 - 2 * turn));
+    }
     gaze.yawShown = damp(gaze.yawShown, gaze.yaw, 10, dt);
     gaze.pitchShown = damp(gaze.pitchShown, gaze.pitch, 10, dt);
     if (Math.abs(gaze.yawShown - gaze.yaw) > 0.0005 || Math.abs(gaze.pitchShown - gaze.pitch) > 0.0005) busy = true;
@@ -566,6 +600,18 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   resize();
   // Le premier rendu compile tous les shaders : c'est la dernière étape de la barre.
   renderer.render(scene, camera);
+  // La vitre du moniteur reflète la chambre, pas le salon du HDRI : une photo en cubemap prise
+  // juste devant l'écran, refaite seulement quand l'ampoule s'allume ou s'éteint.
+  const reflection = keep(new THREE.CubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter }));
+  const reflectionCamera = new THREE.CubeCamera(0.03, 12, reflection);
+  reflectionCamera.position.copy(pc.screenCenter()).addScaledVector(pc.screenNormal(), 0.03);
+  scene.add(reflectionCamera);
+  const captureReflection = () => reflectionCamera.update(renderer, scene);
+  captureReflection();
+  scene.remove(reflectionCamera);
+  const sceneLights: THREE.Light[] = [];
+  scene.traverse((object) => { if (object instanceof THREE.Light) sceneLights.push(object); });
+  pc.setReflection(reflection.texture, sceneLights);
   report(4);
   wake(5000);
   renderer.setAnimationLoop(frame);
@@ -628,6 +674,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // --------------------------------------------------------------- contrôleur
   const raycaster = new THREE.Raycaster();
   const islandHit = new THREE.Vector3();
+  const quadRay = new THREE.Vector3();
+  const quadCache: { key: string; quad: ReturnType<RoomScene['screenQuad']> } = { key: '', quad: null };
   const ndc = new THREE.Vector2();
   const zoneOf = (object: THREE.Object3D | null): RoomZone | null => {
     for (let node = object; node !== null; node = node.parent) {
@@ -644,6 +692,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       view = next;
       if (view !== 'shelf') { active = -1; zoomed = -1; }
       if (view === 'cube' || view === 'lego') { orbit = 0; orbitShown = 0; }
+      // Le regard revient au centre par le plus court chemin, même après plusieurs tours.
+      gaze.yawShown = Math.atan2(Math.sin(gaze.yawShown), Math.cos(gaze.yawShown));
       gaze.yaw = 0; gaze.pitch = 0;
       retarget();
     },
@@ -655,8 +705,18 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       wake();
     },
     look(yaw, pitch) {
-      gaze.yaw = Math.max(-0.75, Math.min(0.75, gaze.yaw + yaw));
-      gaze.pitch = Math.max(-0.35, Math.min(0.35, gaze.pitch + pitch));
+      const around = view === 'overview';
+      gaze.yaw = around ? gaze.yaw + yaw : Math.max(-0.75, Math.min(0.75, gaze.yaw + yaw));
+      gaze.pitch = Math.max(around ? -0.6 : -0.35, Math.min(around ? 0.6 : 0.35, gaze.pitch + pitch));
+      wake();
+    },
+    toggleLight() {
+      lightOn = !lightOn;
+      bulbLight.intensity = lightOn ? 6 : 0;
+      bulbGlass.emissiveIntensity = lightOn ? 6 : 0;
+      lightSwitch.setOn(lightOn);
+      // La vitre du moniteur reflète la pièce telle qu'elle est éclairée maintenant.
+      captureReflection();
       wake();
     },
     setPointer(x, y) { pointer.set(Math.max(-1, Math.min(1, x)), Math.max(-1, Math.min(1, y))); if (zoomed >= 0) wake(900); },
@@ -674,15 +734,22 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
     },
-    screenRect() {
-      if (view !== 'screen' || progress < 1) return null;
+    screenQuad() {
       const rect = canvas.getBoundingClientRect();
+      // Rien n'a bougé depuis le dernier appel : même réponse.
+      const key = `${camera.matrixWorld.elements.join(',')}|${rect.width}|${rect.height}`;
+      if (key === quadCache.key) return quadCache.quad;
+      quadCache.key = key;
+      quadCache.quad = null;
+      const center = pc.screenCenter();
+      if (pc.screenNormal().dot(quadRay.subVectors(camera.position, center)) <= 0) return null;
       const points = pc.screenCorners().map((corner) => corner.project(camera));
-      const xs = points.map((p) => (p.x + 1) / 2 * rect.width);
-      const ys = points.map((p) => (1 - p.y) / 2 * rect.height);
-      const left = Math.min(...xs); const top = Math.min(...ys);
-      return { left, top, width: Math.max(...xs) - left, height: Math.max(...ys) - top };
+      if (points.some((p) => p.z < -1 || p.z > 1)) return null;
+      const quad = points.map((p) => [(p.x + 1) / 2 * rect.width, (1 - p.y) / 2 * rect.height] as [number, number]);
+      quadCache.quad = quad as [[number, number], [number, number], [number, number], [number, number]];
+      return quadCache.quad;
     },
+    setScreenOverlay(on) { pc.setOverlay(on); wake(); },
     setPower(state) { pc.setPower(state); wake(); },
     setScreen(phase) { pc.setScreen(phase); wake(); },
     pressPower() { pc.pressPower(); wake(600); },

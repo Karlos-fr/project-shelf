@@ -19,7 +19,8 @@ import type { RoomScene, RoomView, RoomZone } from '../room/room-scene.ts';
 import XpDesktop from '../xp/XpDesktop.tsx';
 import { AwardBios, XpBoot, XpSplash } from '../xp/XpPower.tsx';
 import type { XpCatalog } from '../xp/xp-apps.ts';
-import { XP_CORNER, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
+import { XP_CORNER, XP_HEIGHT, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
+import { quadTransform } from '../room/homography.ts';
 import type { PcPower, PcScreen } from '../room/pc-model.ts';
 
 export type RoomPageProps = {
@@ -33,10 +34,11 @@ export type RoomPageProps = {
 type SceneState = 'loading' | 'ready' | 'failed';
 const CRASH_FLAG = 'project-shelf:room-loading';
 // Le bouton d'alimentation mène au bureau tant que l'allumage n'existe pas.
-const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone);
+// Bouton d'alimentation et interrupteur agissent sur place ; les autres zones mènent à une vue.
+const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone === 'switch' ? 'overview' : zone);
+const isAction = (zone: RoomZone | null) => zone === 'power' || zone === 'switch';
 // Pas d'une flèche du clavier autour du cube : 15°.
 const ORBIT_STEP = Math.PI / 12;
-type ScreenRect = { left: number; top: number; width: number; height: number };
 // États du PC : allumé, séquence d'arrêt (écran d'arrêt, image qui s'écrase), éteint, puis
 // séquence d'allumage (tube qui chauffe, POST Award, démarrage de XP, accueil).
 type PcState = 'on' | 'shutdown' | 'collapse' | 'off' | 'warmup' | 'bios' | 'boot' | 'welcome';
@@ -78,7 +80,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const draggedRef = useRef(false);
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
-  const [screenRect, setScreenRect] = useState<ScreenRect | null>(null);
+  // Transformation CSS qui plaque le bureau XP sur la dalle 3D, dans toutes les vues où elle se voit.
+  const [screenTransform, setScreenTransform] = useState<string | null>(null);
   const [pc, setPc] = useState<PcState>('on');
   // Début de la phase en cours : le BIOS reprend là où il en était si l'on revient à l'écran.
   const phaseStart = useMemo(() => performance.now(), [pc]);
@@ -178,21 +181,23 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     const timer = window.setTimeout(() => setPc(next[1]), next[0]);
     return () => window.clearTimeout(timer);
   }, [pc, sceneState]);
-  // Face à l'écran : l'interface HTML se cale sur la dalle dès que la caméra est arrivée.
+  // Le vrai bureau XP (HTML) est plaqué en perspective sur la dalle, de près comme de loin :
+  // l'écran 3D montre exactement ce qui est affiché. Masqué si un objet passe devant.
   useEffect(() => {
     const scene = sceneRef.current;
-    if (scene === null || view !== 'screen') { setScreenRect(null); return; }
+    if (scene === null) { setScreenTransform(null); return; }
     let frame = 0;
-    let last = '';
     const follow = () => {
-      const rect = scene.screenRect();
-      const key = rect === null ? '' : [rect.left, rect.top, rect.width, rect.height].map((v) => v.toFixed(1)).join(',');
-      if (key !== last) { last = key; setScreenRect(rect); }
+      const quad = scene.screenQuad();
+      setScreenTransform(quad === null ? null : quadTransform(XP_WIDTH, XP_HEIGHT, quad));
       frame = window.requestAnimationFrame(follow);
     };
     follow();
     return () => window.cancelAnimationFrame(frame);
-  }, [view, sceneState]);
+  }, [sceneState]);
+  // Bureau HTML présent sous le canvas : la vitre 3D n'y ajoute que ses reflets.
+  const overlayOn = screenTransform !== null && pc !== 'off';
+  useEffect(() => { sceneRef.current?.setScreenOverlay(overlayOn); }, [overlayOn, sceneState]);
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
   function goTo(next: RoomView): void {
@@ -225,22 +230,23 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   }
 
   // Vues du cube et de l'île : un glissé horizontal fait tourner la caméra autour de l'objet.
-  // Au doigt, dans les autres vues, le glissé oriente le regard comme la souris sur ordinateur.
-  // Le clic qui termine un glissé est ignoré.
+  // Vue d'ensemble : souris ou doigt font tourner le regard sur 360°. Au doigt, dans les autres
+  // vues, le glissé oriente un peu le regard. Le clic qui termine un glissé est ignoré.
   const orbiting = view === 'cube' || view === 'lego';
+  const lookingAround = view === 'overview';
   function handlePointerDown(event: PointerEvent<HTMLCanvasElement>): void {
     draggedRef.current = false;
     const touch = event.pointerType !== 'mouse';
-    if (event.button !== 0 || (!orbiting && !touch) || view === 'screen') return;
+    if (event.button !== 0 || (!orbiting && !lookingAround && !touch) || view === 'screen') return;
     dragRef.current = { x: event.clientX, y: event.clientY, moved: 0, look: !orbiting };
     event.currentTarget.setPointerCapture(event.pointerId);
-    if (orbiting) event.currentTarget.style.cursor = 'grabbing';
+    if (orbiting || lookingAround) event.currentTarget.style.cursor = 'grabbing';
   }
   function handlePointerUp(event: PointerEvent<HTMLCanvasElement>): void {
     if (dragRef.current === null) return;
     draggedRef.current = dragRef.current.moved > 6;
     dragRef.current = null;
-    if (orbiting) event.currentTarget.style.cursor = 'grab';
+    if (orbiting || lookingAround) event.currentTarget.style.cursor = 'grab';
   }
   function handlePointerMove(event: PointerEvent<HTMLCanvasElement>): void {
     const scene = sceneRef.current;
@@ -258,8 +264,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
         scene.orbitView(-dx / rect.width * Math.PI * 1.3);
       } else {
         // Le doigt tire la vue, comme une photo panoramique : glisser vers la droite tourne le regard
-        // vers la gauche. Toute la largeur de l'écran vaut environ 70°.
-        scene.look(dx / rect.width * 1.2, dy / rect.height * 0.8);
+        // vers la gauche. Toute la largeur de l'écran vaut environ 70° (180° en vue d'ensemble,
+        // pour faire le tour de la pièce en deux glissés).
+        scene.look(dx / rect.width * (lookingAround ? Math.PI : 1.2), dy / rect.height * 0.8);
       }
       return;
     }
@@ -268,8 +275,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     const hit = scene.pick(event.clientX, event.clientY);
     if (orbiting && hit.zone === view) { event.currentTarget.style.cursor = 'grab'; return; }
     const onItem = view === 'shelf' && hit.index >= 0;
-    const toZone = hit.zone !== null && (hit.zone === 'power' || zoneView(hit.zone) !== view) && !onItem ? hit.zone : null;
-    event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : 'default';
+    const toZone = hit.zone !== null && (isAction(hit.zone) || zoneView(hit.zone) !== view) && !onItem ? hit.zone : null;
+    event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : lookingAround ? 'grab' : 'default';
     if (onItem && zoomed < 0) setActive(hit.index);
   }
   function handlePointerLeave(event: PointerEvent<HTMLCanvasElement>): void {
@@ -284,6 +291,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (draggedRef.current) { draggedRef.current = false; return; }
     const hit = scene.pick(event.clientX, event.clientY);
     if (hit.zone === 'power') { scene.pressPower(); togglePower(); return; }
+    if (hit.zone === 'switch') { scene.toggleLight(); return; }
     if (view === 'shelf' && hit.index >= 0) { zoomTo(hit.index === zoomed ? -1 : hit.index); return; }
     if (hit.zone !== null && zoneView(hit.zone) !== view) { goTo(zoneView(hit.zone)); return; }
     // Sans bouton ni étiquette, un clic à côté ramène en arrière : boîte, puis vue, puis vue d'ensemble.
@@ -314,8 +322,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     <main className="room-page" data-state={sceneState}>
       {/* Titre et liens restent dans le HTML : lecteurs d'écran, référencement, et repli si la 3D échoue. */}
       <h1 className="sr-only">{messages.roomPageTitle}</h1>
-      <div className="room__stage" data-state={sceneState}>
-        <canvas ref={canvasRef} className="room__canvas" aria-hidden="true"
+      <div className="room__stage" data-state={sceneState}
+        onClick={(event) => { if (view === 'screen' && event.target === event.currentTarget) handleClick(event as unknown as MouseEvent<HTMLCanvasElement>); }}>
+        <canvas ref={canvasRef} className={`room__canvas${view === 'screen' ? ' is-passive' : ''}`} aria-hidden="true"
           onPointerDown={handlePointerDown} onPointerUp={handlePointerUp} onPointerCancel={handlePointerUp}
           onPointerMove={handlePointerMove} onPointerLeave={handlePointerLeave} onClick={handleClick} />
         {sceneState === 'loading' && (
@@ -329,8 +338,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
           </div>
         )}
         {sceneState === 'ready' && gpu !== '' && <span className="room__gpu">{gpu}{fps !== null && ` · ${fps} FPS`}</span>}
-        {view === 'screen' && screenRect !== null && pc !== 'off' && (
-          <div className={`room__screen is-${pc}`} style={{ left: screenRect.left, top: screenRect.top, transform: `scale(${screenRect.width / XP_WIDTH})`, borderRadius: XP_CORNER }}
+        {overlayOn && (
+          <div className={`room__screen is-${pc}${view === 'screen' ? '' : ' is-far'}`} style={{ transform: screenTransform, borderRadius: XP_CORNER }}
+            aria-hidden={view !== 'screen'} inert={view !== 'screen'}
             onClick={() => { if (pc === 'bios') setPc('boot'); else if (BOOTING.includes(pc)) setPc('on'); }}>
             {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} onTurnOff={() => setPc('shutdown')} />}
             {(pc === 'shutdown' || pc === 'collapse') && <div className="room__tube"><XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="shutdown" /></div>}
