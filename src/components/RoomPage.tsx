@@ -141,6 +141,11 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
       });
     const onResize = () => sceneRef.current?.resize();
     const onVisibility = () => sceneRef.current?.setRunning(document.visibilityState === 'visible');
+    // Safari iOS reprend un glissé à un doigt pour faire défiler ou rebondir la page, malgré
+    // touch-action: none, et annule alors les pointer events (pointercancel) : la vue ne tournait
+    // pas. Bloquer touchmove sur le canvas lui laisse le geste ; le tap reste un clic.
+    const holdGesture = (event: TouchEvent) => { if (event.cancelable) event.preventDefault(); };
+    canvas.addEventListener('touchmove', holdGesture, { passive: false });
     window.addEventListener('resize', onResize);
     document.addEventListener('visibilitychange', onVisibility);
     return () => {
@@ -150,6 +155,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
       writeCrashFlag(CRASH_FLAG, false);
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
+      canvas.removeEventListener('touchmove', holdGesture);
       sceneRef.current?.dispose();
       sceneRef.current = null;
     };
