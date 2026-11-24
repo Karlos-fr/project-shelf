@@ -13,7 +13,7 @@ import type { ProjectSummary } from '../domain/project.ts';
 import { assetUrl, formatRoute, type RouteState } from '../domain/routes.ts';
 import { MESSAGES } from '../i18n/messages.ts';
 import { crossOriginFor } from '../media/ambilight.ts';
-import { CRASH_GRACE_MS, readCrashFlag, writeCrashFlag } from '../shelf/crash-guard.ts';
+import { consumeCrashFlag, CRASH_GRACE_MS, guardLoading } from '../shelf/crash-guard.ts';
 import { selectShelfItems } from '../shelf/shelf-items.ts';
 import type { RoomScene, RoomView, RoomZone } from '../room/room-scene.ts';
 import XpDesktop from '../xp/XpDesktop.tsx';
@@ -21,7 +21,7 @@ import { AwardBios, XpBoot, XpSplash } from '../xp/XpPower.tsx';
 import type { XpCatalog } from '../xp/xp-apps.ts';
 import { XP_CORNER, XP_HEIGHT, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
 import { quadTransform } from '../room/homography.ts';
-import type { PcPower, PcScreen } from '../room/pc-model.ts';
+import { bootKey, BOOTING, PC_NEXT, powerOf, screenOf, type PcState } from '../room/pc-power.ts';
 
 export type RoomPageProps = {
   config: SiteConfig;
@@ -32,26 +32,13 @@ export type RoomPageProps = {
 };
 
 type SceneState = 'loading' | 'ready' | 'failed';
+// Marque de session posée pendant le chargement de la scène (garde-fou anti-plantage).
 const CRASH_FLAG = 'project-shelf:room-loading';
-// Le bouton d'alimentation mène au bureau tant que l'allumage n'existe pas.
 // Bouton d'alimentation et interrupteur agissent sur place ; les autres zones mènent à une vue.
 const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone === 'switch' ? 'overview' : zone);
 const isAction = (zone: RoomZone | null) => zone === 'power' || zone === 'switch';
 // Pas d'une flèche du clavier autour du cube : 15°.
 const ORBIT_STEP = Math.PI / 12;
-// États du PC : allumé, séquence d'arrêt (écran d'arrêt, image qui s'écrase), éteint, puis
-// séquence d'allumage (tube qui chauffe, POST Award, démarrage de XP, accueil).
-type PcState = 'on' | 'shutdown' | 'collapse' | 'off' | 'warmup' | 'bios' | 'boot' | 'welcome';
-const PC_NEXT: Partial<Record<PcState, [number, PcState]>> = {
-  shutdown: [2600, 'collapse'], collapse: [750, 'off'],
-  // Le BIOS n'avance pas seul : il s'arrête sur « Press F1 to continue ».
-  warmup: [1000, 'bios'], boot: [4200, 'welcome'], welcome: [2000, 'on'],
-};
-const BOOTING: readonly PcState[] = ['warmup', 'bios', 'boot', 'welcome'];
-// Voyants et dalle 3D : éteint dès que l'image s'écrase, occupé pendant les séquences.
-const powerOf = (state: PcState): PcPower => (state === 'on' ? 'on' : state === 'off' || state === 'collapse' ? 'off' : 'busy');
-// Image de la dalle 3D pour chaque état : la séquence continue quand on regarde ailleurs.
-const screenOf = (state: PcState): PcScreen => ({ on: 'desktop', shutdown: 'shutdown', collapse: 'black', off: 'black', warmup: 'black', bios: 'bios', boot: 'boot', welcome: 'welcome' } as const)[state];
 
 // ----------------------------------------------------------------------------
 // Rend la scène plein cadre, sans commande : on clique dans la pièce pour s'y déplacer.
@@ -82,6 +69,8 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [zoomed, setZoomed] = useState(-1);
   // Transformation CSS qui plaque le bureau XP sur la dalle 3D, dans toutes les vues où elle se voit.
   const [screenTransform, setScreenTransform] = useState<string | null>(null);
+  // Dernière transformation connue : le bureau garde sa place, masqué, quand la dalle sort du champ.
+  const lastTransformRef = useRef('none');
   const [pc, setPc] = useState<PcState>('on');
   // Début de la phase en cours : le BIOS reprend là où il en était si l'on revient à l'écran.
   const phaseStart = useMemo(() => performance.now(), [pc]);
@@ -93,9 +82,11 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     let disposed = false;
     let clearFlag = 0;
     let fpsTimer = 0;
-    // Un chargement précédent n'a jamais abouti : on reste sur la version HTML.
-    if (readCrashFlag(CRASH_FLAG)) { setSceneState('failed'); return; }
-    writeCrashFlag(CRASH_FLAG, true);
+    // Un chargement précédent n'a jamais abouti : on reste une fois sur la version HTML ;
+    // la marque est effacée, le rechargement suivant retente la 3D.
+    if (consumeCrashFlag(CRASH_FLAG)) { setSceneState('failed'); return; }
+    // Marque posée pendant le chargement, effacée si la page est quittée normalement.
+    const releaseGuard = guardLoading(CRASH_FLAG);
     const showFps = new URLSearchParams(window.location.search).has('fps');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     void import('../room/room-scene.ts')
@@ -134,10 +125,10 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
           }, 500);
         }
         setSceneState('ready');
-        clearFlag = window.setTimeout(() => writeCrashFlag(CRASH_FLAG, false), CRASH_GRACE_MS);
+        clearFlag = window.setTimeout(releaseGuard, CRASH_GRACE_MS);
       })
       .catch((error: unknown) => {
-        writeCrashFlag(CRASH_FLAG, false);
+        releaseGuard();
         if (disposed) return;
         setNoWebGpu(error instanceof Error && error.name === 'WebGpuUnavailableError');
         setSceneState('failed');
@@ -155,7 +146,7 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
       disposed = true;
       window.clearTimeout(clearFlag);
       window.clearInterval(fpsTimer);
-      writeCrashFlag(CRASH_FLAG, false);
+      releaseGuard();
       window.removeEventListener('resize', onResize);
       document.removeEventListener('visibilitychange', onVisibility);
       canvas.removeEventListener('touchmove', holdGesture);
@@ -189,14 +180,19 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     let frame = 0;
     const follow = () => {
       const quad = scene.screenQuad();
-      setScreenTransform(quad === null ? null : quadTransform(XP_WIDTH, XP_HEIGHT, quad));
+      const transform = quad === null ? null : quadTransform(XP_WIDTH, XP_HEIGHT, quad);
+      if (transform !== null) lastTransformRef.current = transform;
+      setScreenTransform(transform);
       frame = window.requestAnimationFrame(follow);
     };
     follow();
     return () => window.cancelAnimationFrame(frame);
   }, [sceneState]);
-  // Bureau HTML présent sous le canvas : la vitre 3D n'y ajoute que ses reflets.
-  const overlayOn = screenTransform !== null && pc !== 'off';
+  // Bureau HTML monté tant que le PC n'est pas éteint, même quand la dalle sort du champ :
+  // ses fenêtres, pages et vidéos survivent à un regard ailleurs. Il n'est que masqué.
+  const overlayMounted = sceneState === 'ready' && pc !== 'off';
+  // Bureau HTML visible sous le canvas : la vitre 3D n'y ajoute que ses reflets.
+  const overlayOn = overlayMounted && screenTransform !== null;
   useEffect(() => { sceneRef.current?.setScreenOverlay(overlayOn); }, [overlayOn, sceneState]);
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
@@ -299,9 +295,14 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     else if (view === 'screen' || hit.zone === null) back();
   }
   function handleKeyDown(event: globalThis.KeyboardEvent): void {
-    // F1 fait repartir le BIOS ; ailleurs dans l'allumage, une touche passe au bureau.
-    if (pc === 'bios') { if (event.key === 'F1') { setPc('boot'); event.preventDefault(); } else if (event.key !== 'Escape') event.preventDefault(); if (event.key !== 'Escape') return; }
-    if (BOOTING.includes(pc) && event.key !== 'Escape') { setPc('on'); event.preventDefault(); return; }
+    // Face à l'écran pendant l'allumage : F1 fait repartir le BIOS, une autre touche passe au
+    // bureau. Tab, Échap, les modificateurs seuls et les touches répétées gardent leur rôle.
+    const boot = bootKey(pc, event.key, event.repeat, view === 'screen');
+    if (boot !== null) {
+      if (boot !== 'hold') setPc(boot);
+      event.preventDefault();
+      return;
+    }
     if (event.key === 'Escape' && (zoomed >= 0 || view !== 'overview')) { back(); event.preventDefault(); return; }
     if (orbiting && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
       sceneRef.current?.orbitView(ORBIT_STEP * (event.key === 'ArrowLeft' ? 1 : -1));
@@ -338,11 +339,12 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
           </div>
         )}
         {sceneState === 'ready' && gpu !== '' && <span className="room__gpu">{gpu}{fps !== null && ` · ${fps} FPS`}</span>}
-        {overlayOn && (
-          <div className={`room__screen is-${pc}${view === 'screen' ? '' : ' is-far'}`} style={{ transform: screenTransform, borderRadius: XP_CORNER }}
+        {overlayMounted && (
+          <div className={`room__screen is-${pc}${view === 'screen' ? '' : ' is-far'}${overlayOn ? '' : ' is-hidden'}`}
+            style={{ transform: screenTransform ?? lastTransformRef.current, borderRadius: XP_CORNER }}
             aria-hidden={view !== 'screen'} inert={view !== 'screen'}
             onClick={() => { if (pc === 'bios') setPc('boot'); else if (BOOTING.includes(pc)) setPc('on'); }}>
-            {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} onTurnOff={() => setPc('shutdown')} />}
+            {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} active={view === 'screen'} onTurnOff={() => setPc('shutdown')} />}
             {(pc === 'shutdown' || pc === 'collapse') && <div className="room__tube"><XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="shutdown" /></div>}
             {pc === 'warmup' && <div className="xp-power" />}
             {pc === 'bios' && <AwardBios startedAt={phaseStart} />}
@@ -353,6 +355,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
       </div>
       <section className={sceneState === 'failed' ? 'room__fallback' : 'sr-only'} aria-labelledby="room-index">
         {sceneState === 'failed' && <p>{noWebGpu ? messages.roomNoWebGpu : messages.roomFailed}</p>}
+        {sceneState === 'failed' && !noWebGpu && (
+          <p><button type="button" className="room__retry" onClick={() => window.location.reload()}>{messages.roomRetry}</button></p>
+        )}
         <h2 id="room-index">{messages.roomIndex}</h2>
         <ul className="shelf__index">
           {summaries.map((project) => (

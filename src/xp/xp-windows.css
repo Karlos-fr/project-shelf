@@ -80,6 +80,8 @@
 .xp-game { position: absolute; inset: 0; overflow: hidden; background: #ece9d8; }
 .xp-game iframe { position: absolute; border: 0; background: #ece9d8; }
 .xp-browser__page iframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; background: #fff; }
+/* Page suspendue hors champ (son et calcul coupés) : fond blanc d'IE, rechargée au retour. */
+.xp-browser__suspended { position: absolute; inset: 0; background: #fff; }
 
 /* ---------------------------------------------------------------- Lecteur Windows Media 9 */
 .xp-player { flex-direction: row; background: linear-gradient(to bottom, #2b4c8c, #0f1f45); color: #e6edff; }

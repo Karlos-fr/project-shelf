@@ -21,6 +21,9 @@ export type XpDesktopProps = {
   locale: Locale;
   catalog: XpCatalog;
   base: string;
+  // Vrai quand on regarde l'écran : hors champ, les vidéos se mettent en pause et les pages
+  // d'Internet Explorer sont suspendues (voir XpPrograms).
+  active: boolean;
   // Menu Démarrer → Arrêter l'ordinateur.
   onTurnOff: () => void;
 };
@@ -34,7 +37,7 @@ const AREA = { width: XP_WIDTH, height: XP_HEIGHT - XP_TASKBAR };
 // ----------------------------------------------------------------------------
 // Rend le bureau. La taille est fixe ; le parent applique la mise à l'échelle.
 // ----------------------------------------------------------------------------
-export default function XpDesktop({ locale, catalog, base, onTurnOff }: XpDesktopProps) {
+export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: XpDesktopProps) {
   const labels = XP_LABELS[locale];
   const rootRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
@@ -158,13 +161,15 @@ export default function XpDesktop({ locale, catalog, base, onTurnOff }: XpDeskto
       <div className="xp__recycle">{renderIcon(recycle)}</div>
       {windows.map((win) => {
         const app = win.appId === undefined ? undefined : catalog.apps[win.appId];
+        // Un programme ne tourne que s'il se voit : écran regardé et fenêtre non réduite.
+        const live = active && !win.frame.minimized;
         return (
           <XpWindow key={win.id} title={win.title} icon={win.icon} frame={win.frame} focused={win.id === focused} labels={windowLabels} area={AREA}
             onFocus={() => focus(win.id)} onMinimize={() => update(win.id, () => ({ minimized: true }))}
             onToggleMaximize={() => update(win.id, (frame) => ({ maximized: !frame.maximized }))} onClose={() => close(win.id)}
             onDragStart={(event) => dragStart(win.id, event)}>
-            {app?.kind === 'browser' && <XpBrowser app={app} labels={labels} asset={asset} />}
-            {app?.kind === 'player' && <XpPlayer app={app} labels={labels} />}
+            {app?.kind === 'browser' && <XpBrowser app={app} labels={labels} asset={asset} active={live} />}
+            {app?.kind === 'player' && <XpPlayer app={app} labels={labels} active={live} />}
             {app?.kind === 'window' && (
               <XpGameWindow app={app} onResize={(dw, dh) => update(win.id, (frame) => {
                 const w = Math.min(AREA.width, frame.w + dw);

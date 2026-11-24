@@ -38,9 +38,6 @@ function Tool({ icon, label, title, disabled = false, arrow = false, small = fal
   );
 }
 
-// ----------------------------------------------------------------------------
-// Internet Explorer 6 : barre de menus, boutons, barre d'adresse, page et barre d'état.
-// ----------------------------------------------------------------------------
 // Marge du jeu autour de son plateau, rognée par la fenêtre : en dessous, le jeu réduirait
 // son plateau pour tenir dans le cadre.
 const GAME_MARGIN = 24;
@@ -98,10 +95,31 @@ export function XpGameWindow({ app, onResize }: { app: XpWindowApp; onResize(dw:
   );
 }
 
-export function XpBrowser({ app, labels, asset }: { app: XpBrowserApp; labels: Labels; asset: Asset }) {
+// Délai hors champ avant de suspendre une page d'Internet Explorer, en millisecondes : un
+// coup d'œil ailleurs garde la démo en cours ; au-delà, son et calcul s'arrêtent.
+const BROWSER_SUSPEND_MS = 5000;
+
+// ----------------------------------------------------------------------------
+// Internet Explorer 6 : barre de menus, boutons, barre d'adresse, page et barre d'état.
+// Paramètres : active est vrai quand la fenêtre se voit. Une page d'une autre origine ne
+// peut pas être mise en pause : après BROWSER_SUSPEND_MS hors champ, son cadre est retiré
+// (son et calcul coupés), puis rechargé au retour.
+// ----------------------------------------------------------------------------
+export function XpBrowser({ app, labels, asset, active }: { app: XpBrowserApp; labels: Labels; asset: Asset; active: boolean }) {
   const [reload, setReload] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [suspended, setSuspended] = useState(false);
   const openInTab = () => window.open(app.url, '_blank', 'noopener');
+  // Hors champ : suspend la page après le délai ; un retour avant son terme l'annule.
+  useEffect(() => {
+    if (active) return undefined;
+    const timer = window.setTimeout(() => setSuspended(true), BROWSER_SUSPEND_MS);
+    return () => window.clearTimeout(timer);
+  }, [active]);
+  // Retour à l'écran : la page suspendue est rechargée.
+  useEffect(() => {
+    if (active && suspended) { setSuspended(false); setLoading(true); }
+  }, [active, suspended]);
   return (
     <div className="xp-app xp-browser">
       <MenuBar labels={labels} asset={asset} />
@@ -124,7 +142,9 @@ export function XpBrowser({ app, labels, asset }: { app: XpBrowserApp; labels: L
         <span className="xp-app__links">{labels.links}</span>
       </div>
       <div className="xp-browser__page">
-        <iframe key={reload} src={app.url} title={app.name} allow="fullscreen; autoplay; gamepad" onLoad={() => setLoading(false)} />
+        {suspended
+          ? <div className="xp-browser__suspended" aria-hidden="true" />
+          : <iframe key={reload} src={app.url} title={app.name} allow="fullscreen; autoplay; gamepad" onLoad={() => setLoading(false)} />}
       </div>
       <div className="xp-app__status">
         <span className="xp-app__status-main"><img src={asset('ie')} alt="" />{loading ? `${app.url}…` : labels.done}</span>
@@ -138,7 +158,9 @@ export function XpBrowser({ app, labels, asset }: { app: XpBrowserApp; labels: L
 // ----------------------------------------------------------------------------
 // Lecteur Windows Media 9 : barre des tâches verticale, écran vidéo, commandes rondes.
 // ----------------------------------------------------------------------------
-export function XpPlayer({ app, labels }: { app: XpPlayerApp; labels: Labels }) {
+// Paramètres : active est vrai quand la fenêtre se voit ; hors champ, la vidéo se met en
+// pause et ne repart que sur une action de l'utilisateur.
+export function XpPlayer({ app, labels, active }: { app: XpPlayerApp; labels: Labels; active: boolean }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
@@ -154,10 +176,12 @@ export function XpPlayer({ app, labels }: { app: XpPlayerApp; labels: Labels }) 
     void video.play().catch(() => setPlaying(false));
     return () => { video.pause(); };
   }, []);
+  // Écran quitté ou fenêtre réduite : la vidéo s'arrête, son compris.
+  useEffect(() => { if (!active) videoRef.current?.pause(); }, [active]);
 
-  const video = videoRef.current;
-  const toggle = () => { if (video === null) return; if (video.paused) void video.play(); else video.pause(); };
-  const stop = () => { if (video === null) return; video.pause(); video.currentTime = 0; };
+  // Les commandes lisent la vidéo au moment du clic : au premier rendu, la référence est encore vide.
+  const toggle = () => { const video = videoRef.current; if (video === null) return; if (video.paused) void video.play(); else video.pause(); };
+  const stop = () => { const video = videoRef.current; if (video === null) return; video.pause(); video.currentTime = 0; };
   const tabs = [labels.nowPlaying, labels.mediaGuide, labels.rip, labels.library, labels.radio, labels.burn, labels.sync];
   return (
     <div className="xp-app xp-player">
@@ -175,7 +199,7 @@ export function XpPlayer({ app, labels }: { app: XpPlayerApp; labels: Labels }) 
         </div>
         <div className="xp-player__controls">
           <input className="xp-player__seek" type="range" min={0} max={duration || 1} step={0.1} value={time} aria-label={labels.seek}
-            onChange={(event) => { if (video !== null) video.currentTime = Number(event.currentTarget.value); }} />
+            onChange={(event) => { const video = videoRef.current; if (video !== null) video.currentTime = Number(event.currentTarget.value); }} />
           <div className="xp-player__buttons">
             <button type="button" className={`xp-player__play${playing ? ' is-playing' : ''}`} aria-label={playing ? labels.pause : labels.play} title={playing ? labels.pause : labels.play} onClick={toggle} />
             <button type="button" className="xp-player__small is-stop" aria-label={labels.stop} title={labels.stop} onClick={stop} />
@@ -183,7 +207,7 @@ export function XpPlayer({ app, labels }: { app: XpPlayerApp; labels: Labels }) 
             <button type="button" className="xp-player__small is-next" aria-hidden="true" tabIndex={-1} disabled />
             <button type="button" className={`xp-player__small is-mute${muted ? ' is-on' : ''}`} aria-label={labels.mute} aria-pressed={muted} title={labels.mute} onClick={() => setMuted((m) => !m)} />
             <input className="xp-player__volume" type="range" min={0} max={1} step={0.05} value={volume} aria-label={labels.volume}
-              onChange={(event) => { const v = Number(event.currentTarget.value); setVolume(v); if (video !== null) video.volume = v; }} />
+              onChange={(event) => { const v = Number(event.currentTarget.value); setVolume(v); const video = videoRef.current; if (video !== null) video.volume = v; }} />
             <button type="button" className="xp-player__small is-full" aria-label={labels.fullscreen} title={labels.fullscreen}
               onClick={() => { void videoRef.current?.requestFullscreen?.().catch(() => undefined); }} />
           </div>

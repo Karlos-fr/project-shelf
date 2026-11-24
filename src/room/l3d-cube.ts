@@ -12,7 +12,7 @@
 import * as THREE from 'three/webgpu';
 import { buildCube } from './l3d/cube-model.ts';
 import { photonLedColour } from './l3d/photon-led.ts';
-import type { PhotonSignal } from './virtual-cube-worker.ts';
+import type { PhotonSignal } from './virtual-cube-protocol.ts';
 
 // Sortie de la prise jack du panneau arrière, en mètres dans le repère du cube.
 export const POWER_JACK = new THREE.Vector3(0.0512, 0.0277, -0.0872);

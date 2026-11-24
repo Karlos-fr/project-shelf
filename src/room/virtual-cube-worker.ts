@@ -7,10 +7,14 @@
 // à la prise TCP virtuelle du firmware et renvoie la réponse. Le firmware ne
 // démarre qu'à la première requête : jusque-là le cube reste éteint et ne coûte
 // rien. Les couleurs des LED partent vers la page dans l'ordre (y, x, z), en RGB.
+// Un firmware introuvable éteint le cube et répond une erreur au studio ; la requête
+// suivante retente le démarrage.
 // ============================================================================
+import { EEPROM_SIZE, type PhotonSignal, type WorkerInit, type WorkerOut } from './virtual-cube-protocol.ts';
 
 // Nom du canal partagé avec le studio, même origine karlos-fr.github.io.
 const CHANNEL = 'l3d-virtual-cube';
+// Arête du cube, en LED.
 const N = 8;
 // Cadence maximale des images envoyées à la scène.
 const FRAME_MS = 33;
@@ -34,14 +38,6 @@ type Emulator = {
 };
 type StudioRequest = { kind: 'l3d-request'; id: string; method: string; path: string; contentType: string | null; body: ArrayBuffer | null };
 type Pending = { request: StudioRequest; reply: (message: unknown) => void };
-export type WorkerInit = { kind: 'init'; emulatorUrl: string; eeprom: Uint8Array | null };
-export type WorkerOut =
-  | { kind: 'frame'; rgb: Uint8Array }
-  | { kind: 'eeprom'; bytes: Uint8Array }
-  | { kind: 'status'; running: boolean }
-  | { kind: 'led'; signal: PhotonSignal };
-// Signaux de la LED d'état de Device OS, dans l'ordre d'un démarrage.
-export type PhotonSignal = 'off' | 'power-on' | 'network-connecting' | 'cloud-connecting' | 'cloud-handshake' | 'cloud-connected';
 
 // Démarrage du vrai cube (Device OS en mode AUTOMATIC, sans fil système) : setup()
 // ne s'exécute qu'une fois connecté au cloud. Le Photon virtuel rejoue la même
@@ -60,7 +56,8 @@ let eeprom: Uint8Array | null = null;
 let booting: Promise<Emulator> | null = null;
 const queue: Pending[] = [];
 let serving = false;
-// Change à chaque démarrage : les boucles d'une instance remplacée s'arrêtent.
+// Change à chaque démarrage et à chaque redémarrage : les boucles et les échanges d'une
+// instance remplacée s'arrêtent.
 let generation = 0;
 
 // ----------------------------------------------------------------------------
@@ -78,7 +75,8 @@ async function boot(): Promise<Emulator> {
     await sleep(ms);
   }
   const emulator = await loading;
-  if (eeprom !== null) emulator.HEAPU8.set(eeprom, emulator._emu_eeprom());
+  // Une EEPROM d'une autre taille écraserait le tas du WebAssembly : elle est ignorée.
+  if (eeprom !== null && eeprom.length === EEPROM_SIZE) emulator.HEAPU8.set(eeprom, emulator._emu_eeprom());
   const setup = emulator.cwrap('emu_setup', null, [], { async: true });
   const tick = emulator.cwrap('emu_tick', null, [], { async: true });
   scope.postMessage({ kind: 'led', signal: 'cloud-connected' });
@@ -96,16 +94,29 @@ async function boot(): Promise<Emulator> {
   return emulator;
 }
 
-// System.reset() : on repart d'une instance neuve, EEPROM conservée.
+// ----------------------------------------------------------------------------
+// System.reset() : on repart d'une instance neuve, EEPROM conservée. La génération
+// change tout de suite : l'échange en cours avec l'ancienne instance échoue aussitôt,
+// et la boucle de service passe à la nouvelle instance sans être doublée.
+// ----------------------------------------------------------------------------
 function restart(): void {
+  generation += 1;
   booting = null;
-  serving = false;
   scope.postMessage({ kind: 'led', signal: 'off' });
-  void sleep(150).then(() => ensure()).then(() => serve());
+  void sleep(150).then(() => ensure()).then(() => serve(), () => undefined);
 }
 
+// ----------------------------------------------------------------------------
+// Instance du firmware en marche, démarrée au besoin.
+// Erreurs : si le module ne se charge pas, le cube s'éteint, la promesse rejette et la
+// demande suivante retente le démarrage.
+// ----------------------------------------------------------------------------
 function ensure(): Promise<Emulator> {
-  booting ??= boot();
+  booting ??= boot().catch((error: unknown) => {
+    booting = null;
+    scope.postMessage({ kind: 'led', signal: 'off' });
+    throw error;
+  });
   return booting;
 }
 
@@ -137,7 +148,7 @@ async function pump(emulator: Emulator, run: number): Promise<void> {
     }
     if (emulator._emu_eeprom_take_dirty()) {
       const pointer = emulator._emu_eeprom();
-      eeprom = emulator.HEAPU8.slice(pointer, pointer + 2047);
+      eeprom = emulator.HEAPU8.slice(pointer, pointer + EEPROM_SIZE);
       scope.postMessage({ kind: 'eeprom', bytes: eeprom.slice() });
     }
     await sleep(FRAME_MS);
@@ -145,23 +156,34 @@ async function pump(emulator: Emulator, run: number): Promise<void> {
 }
 
 // ----------------------------------------------------------------------------
-// Sert la file des requêtes une par une : la prise virtuelle n'a qu'un client.
+// Sert la file des requêtes une par une : la prise virtuelle n'a qu'un client. Chaque
+// requête prend l'instance courante, qui a pu changer après un System.reset().
+// Erreurs : firmware introuvable, toutes les requêtes en attente reçoivent une erreur.
 // ----------------------------------------------------------------------------
 async function serve(): Promise<void> {
   if (serving) return;
   serving = true;
   try {
-    const emulator = await ensure();
     while (queue.length > 0) {
+      const emulator = await ensure();
+      const run = generation;
       const { request, reply } = queue.shift()!;
-      reply(await transact(emulator, request));
+      reply(await transact(emulator, request, run));
     }
+  } catch {
+    for (const { request, reply } of queue.splice(0)) reply(failure(request.id, 'firmware indisponible'));
   } finally {
     serving = false;
   }
 }
 
-async function transact(emulator: Emulator, request: StudioRequest): Promise<unknown> {
+// ----------------------------------------------------------------------------
+// Passe une requête HTTP du studio à la prise virtuelle et attend la réponse.
+// Paramètres : run est la génération de l'instance ; si elle change (redémarrage),
+// l'échange échoue aussitôt au lieu d'attendre une réponse qui ne viendra pas.
+// Retour : réponse découpée, ou erreur (prise occupée, pas de réponse, redémarrage).
+// ----------------------------------------------------------------------------
+async function transact(emulator: Emulator, request: StudioRequest, run: number): Promise<unknown> {
   const body = request.body === null ? new Uint8Array(0) : new Uint8Array(request.body);
   const head = `${request.method} ${request.path} HTTP/1.1\r\nHost: cube-virtuel\r\n`
     + (request.method === 'POST' ? `Content-Type: ${request.contentType ?? 'text/plain'}\r\nContent-Length: ${body.length}\r\n` : '')
@@ -173,10 +195,12 @@ async function transact(emulator: Emulator, request: StudioRequest): Promise<unk
   emulator.HEAPU8.set(raw, emulator._emu_request_buffer());
   const started = performance.now();
   while (!emulator._emu_request_submit(raw.length)) {
+    if (run !== generation) return failure(request.id, 'cube redémarré');
     if (performance.now() - started > 4000) return failure(request.id, 'prise occupée');
     await sleep(2);
   }
   while (!emulator._emu_response_ready()) {
+    if (run !== generation) return failure(request.id, 'cube redémarré');
     if (performance.now() - started > 4500) return failure(request.id, 'pas de réponse');
     await sleep(2);
   }
@@ -203,6 +227,7 @@ function parseResponse(id: string, bytes: Uint8Array): unknown {
   return { kind: 'l3d-response', id, status: Number.isFinite(status) ? status : 502, headers, body };
 }
 
+// Réponse d'erreur au studio pour la requête id.
 function failure(id: string, message: string): unknown {
   return { kind: 'l3d-response', id, error: message };
 }

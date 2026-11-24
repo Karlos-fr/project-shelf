@@ -10,7 +10,7 @@
 // A la mise sous tension, la LED clignote en blanc. Ce fichier ne connait que le temps.
 // ============================================================================
 
-import type { PhotonSignal } from "../virtual-cube-worker.ts";
+import type { PhotonSignal } from "../virtual-cube-protocol.ts";
 
 type Rgb = [number, number, number];
 const WHITE: Rgb = [1, 1, 1];
