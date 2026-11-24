@@ -5,9 +5,13 @@
 // abandonware-magazines.org. Chaque revue est un pavé : couverture brillante dessus,
 // dos de couleur dessous, tranche collée portant le titre, et bords de pages. La pile
 // est un peu de travers, comme posée à la main. Origine : dessous de la pile, au centre.
+// Couverture, tranche et dos d'une revue sont peints sur une seule toile (une texture, un
+// matériau), et les bords de pages de toute la pile forment un seul maillage : la pile
+// coûte six appels de dessin au lieu de trente.
 // Plus tard, chaque revue pourra s'ouvrir et se feuilleter.
 // ============================================================================
 import * as THREE from 'three/webgpu';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { canvas2d, loadImage } from '../shelf/shelf-materials.ts';
 
 export type Magazine = {
@@ -30,6 +34,16 @@ export const MAGAZINES: readonly Magazine[] = [
   { file: 'pcteam-61.jpg', title: 'PC TEAM', issue: 'N° 61 · OCTOBRE 2000', size: [0.215, 0.285, 0.0075], spine: '#1e4fa8' },
 ];
 
+// Largeur de la toile de chaque revue, en pixels ; la couverture garde ses proportions.
+const ATLAS_W = 1024;
+// Hauteur de la bande de tranche (titre et numéro) et de la bande de dos, sous la couverture.
+const SPINE_H = 40;
+const BACK_H = 8;
+// Faces du pavé dans l'ordre de BoxGeometry : +x, -x (tranche collée), dessus (couverture),
+// dessous (dos), +z, -z. Chaque face compte 6 sommets une fois la géométrie dépliée.
+const FACE_VERTICES = 6;
+const PAGE_FACES = [0, 4, 5] as const;
+
 // ----------------------------------------------------------------------------
 // Construit la pile. base est le préfixe des fichiers servis sous /room/.
 // Effets de bord : charge les couvertures.
@@ -41,39 +55,90 @@ export async function buildMagazineStack(keep: <V extends { dispose(): void }>(v
   const pages = keep(new THREE.CanvasTexture(pageEdgeCanvas()));
   pages.colorSpace = THREE.SRGBColorSpace;
   const pageMaterial = keep(new THREE.MeshStandardMaterial({ map: pages, roughness: 0.9 }));
+  const pageParts: THREE.BufferGeometry[] = [];
   let y = 0;
   MAGAZINES.forEach((magazine, index) => {
     const [w, h, t] = magazine.size;
-    const image = covers[index];
-    const cover = image === null || image === undefined ? null : keep(new THREE.Texture(image));
-    if (cover !== null) {
-      cover.colorSpace = THREE.SRGBColorSpace;
-      cover.anisotropy = anisotropy;
-      cover.needsUpdate = true;
-    }
-    // Papier couché brillant : la couverture reflète la fenêtre.
-    const front = keep(new THREE.MeshPhysicalMaterial({ map: cover, color: cover === null ? magazine.spine : 0xffffff, roughness: 0.32, clearcoat: 0.6, clearcoatRoughness: 0.18 }));
-    const back = keep(new THREE.MeshPhysicalMaterial({ color: magazine.spine, roughness: 0.4, clearcoat: 0.4 }));
-    const spineTexture = keep(new THREE.CanvasTexture(spineCanvas(magazine)));
-    spineTexture.colorSpace = THREE.SRGBColorSpace;
-    spineTexture.anisotropy = anisotropy;
-    const spine = keep(new THREE.MeshPhysicalMaterial({ map: spineTexture, roughness: 0.4, clearcoat: 0.3 }));
-    // Faces du pavé : +x, -x (tranche collée), dessus (couverture), dessous (dos), +z, -z.
-    const mesh = new THREE.Mesh(keep(new THREE.BoxGeometry(w, t, h)), [pageMaterial, spine, front, back, pageMaterial, pageMaterial]);
-    mesh.castShadow = mesh.receiveShadow = true;
+    const atlas = atlasCanvas(magazine, covers[index] ?? null);
+    const texture = keep(new THREE.CanvasTexture(atlas.canvas));
+    texture.colorSpace = THREE.SRGBColorSpace;
+    texture.anisotropy = anisotropy;
+    // Papier couché brillant : la couverture reflète la fenêtre ; tranche et dos aussi, un peu moins.
+    const material = keep(new THREE.MeshPhysicalMaterial({ map: texture, roughness: 0.34, clearcoat: 0.55, clearcoatRoughness: 0.18 }));
     // La couverture se lit depuis l'avant du bureau ; chaque revue est posée un peu de biais.
     const jitter = [0.05, -0.09, 0.12, -0.04, 0.08][index] ?? 0;
     const shift = [[0, 0], [0.008, -0.01], [-0.012, 0.006], [0.006, 0.012], [-0.004, -0.006]][index] ?? [0, 0];
-    mesh.rotation.y = jitter;
-    mesh.position.set(shift[0] ?? 0, y + t / 2, shift[1] ?? 0);
+    const place = new THREE.Matrix4().compose(
+      new THREE.Vector3(shift[0] ?? 0, y + t / 2, shift[1] ?? 0),
+      new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), jitter),
+      new THREE.Vector3(1, 1, 1),
+    );
+    const box = new THREE.BoxGeometry(w, t, h).toNonIndexed();
+    box.applyMatrix4(place);
+    // Tranche, couverture et dos sur la toile de la revue ; bords de pages mis de côté.
+    const skin = faces(box, [[1, atlas.spine], [2, atlas.cover], [3, atlas.back]]);
+    for (const face of PAGE_FACES) pageParts.push(faces(box, [[face, null]]));
+    box.dispose();
+    const mesh = new THREE.Mesh(keep(skin), material);
+    mesh.castShadow = mesh.receiveShadow = true;
     mesh.userData.magazine = index;
     group.add(mesh);
     y += t;
   });
+  const edges = new THREE.Mesh(keep(mergeGeometries(pageParts, false) ?? new THREE.BufferGeometry()), pageMaterial);
+  for (const part of pageParts) part.dispose();
+  edges.castShadow = edges.receiveShadow = true;
+  group.add(edges);
   return group;
 }
 
+// Bande de la toile, en coordonnées de texture : v de vMin (bas) à vMax (haut).
+type Band = { vMin: number; vMax: number };
+
+// ----------------------------------------------------------------------------
+// Toile d'une revue : couverture en haut, puis bande de tranche, puis bande de dos.
+// Sans couverture chargée, la zone prend la couleur de la tranche.
+// Retour : la toile et la bande de chaque face, en coordonnées de texture.
+// ----------------------------------------------------------------------------
+function atlasCanvas(magazine: Magazine, cover: HTMLImageElement | null): { canvas: HTMLCanvasElement; cover: Band; spine: Band; back: Band } {
+  const coverH = Math.round(ATLAS_W * magazine.size[1] / magazine.size[0]);
+  const height = coverH + SPINE_H + BACK_H;
+  const [canvas, context] = canvas2d(ATLAS_W, height);
+  context.fillStyle = magazine.spine;
+  context.fillRect(0, 0, ATLAS_W, height);
+  if (cover !== null) context.drawImage(cover, 0, 0, ATLAS_W, coverH);
+  context.drawImage(spineCanvas(magazine), 0, coverH, ATLAS_W, SPINE_H);
+  // La texture est retournée (flipY) : le haut de la toile correspond à v = 1.
+  const band = (top: number, bottom: number): Band => ({ vMin: 1 - bottom / height, vMax: 1 - top / height });
+  return { canvas, cover: band(0, coverH), spine: band(coverH, coverH + SPINE_H), back: band(coverH + SPINE_H + 1, height - 1) };
+}
+
+// ----------------------------------------------------------------------------
+// Extrait des faces d'un pavé déplié (6 sommets par face) en une géométrie.
+// Paramètres : list associe un numéro de face à sa bande de toile (null : coordonnées
+// de texture inchangées, pour les bords de pages).
+// ----------------------------------------------------------------------------
+function faces(box: THREE.BufferGeometry, list: [number, Band | null][]): THREE.BufferGeometry {
+  const parts = list.map(([face, band]) => {
+    const part = new THREE.BufferGeometry();
+    for (const name of ['position', 'normal', 'uv'] as const) {
+      const source = box.attributes[name] as THREE.BufferAttribute;
+      const values = (source.array as Float32Array).slice(face * FACE_VERTICES * source.itemSize, (face + 1) * FACE_VERTICES * source.itemSize);
+      part.setAttribute(name, new THREE.BufferAttribute(values, source.itemSize));
+    }
+    if (band !== null) {
+      const uv = part.attributes.uv as THREE.BufferAttribute;
+      for (let i = 0; i < uv.count; i += 1) uv.setY(i, band.vMin + uv.getY(i) * (band.vMax - band.vMin));
+    }
+    return part;
+  });
+  const merged = mergeGeometries(parts, false) ?? new THREE.BufferGeometry();
+  for (const part of parts) part.dispose();
+  return merged;
+}
+
 // Tranche collée : fond de couleur, titre et numéro en capitales, dans le sens de la longueur.
+// Retour : toile 1024 x 40, recopiée dans la bande de tranche de la toile de la revue.
 function spineCanvas(magazine: Magazine): HTMLCanvasElement {
   const [canvas, context] = canvas2d(1024, 40);
   context.fillStyle = magazine.spine;

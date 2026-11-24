@@ -2,7 +2,8 @@
 Usage : python scripts/convert-moc.py <dossier scripts lego-moc> <modele.io> <sortie.bin>
 Format : uint32 longueur de l'en-tete JSON, en-tete JSON (UTF-8, complete a 4 octets),
 puis pour chaque groupe de couleur : positions int16 (x, y, z ; unite = 1/20 LDU),
-indices uint32, et 4 octets int8 par sommet (u, v, w, 0) : sur le dessus des tenons,
+indices uint16 si le groupe a moins de 65 536 sommets (index16 dans l'en-tete, completes
+a 4 octets), uint32 sinon, et 4 octets int8 par sommet (u, v, w, 0) : sur le dessus des tenons,
 (u, v) donne la position dans le disque (±120 au bord, axes x et z du tenon) et w = 127
 pour y poser le logo LEGO ; ailleurs, -128. Repere de sortie : y vers le haut, avant vers +z, origine au centre du
 dessous de la base."""
@@ -87,9 +88,12 @@ for code, chunks in sorted(groups.items()):
     keep = (tris[:, 0] != tris[:, 1]) & (tris[:, 1] != tris[:, 2]) & (tris[:, 0] != tris[:, 2])
     index = tris[keep].reshape(-1)
     info = colours.get(code, {'name': str(code), 'rgb': 'ff00ff', 'alpha': 1, 'finish': None})
-    header['groups'].append({'code': code, **info, 'vertices': len(uniq), 'indices': len(index)})
+    small = len(uniq) < 65536
+    header['groups'].append({'code': code, **info, 'vertices': len(uniq), 'indices': len(index), **({'index16': True} if small else {})})
     blobs.append(uniq.astype('<i2').tobytes() + (b'\0\0' if len(uniq) * 3 % 2 else b''))
-    blobs.append(index.astype('<u4').tobytes())
+    # Indices sur 16 bits quand c'est possible : fichier et memoire video plus legers.
+    packed = index.astype('<u2' if small else '<u4').tobytes()
+    blobs.append(packed + b'\0' * (-len(packed) % 4))
     # Logo : un sommet garde les coordonnees du dessus de tenon qu'il borde, s'il en borde un.
     logo = np.full((len(uniq), 4), -128, np.int16); logo[:, 3] = 0
     marked = ~np.isnan(tuv[:, 0])

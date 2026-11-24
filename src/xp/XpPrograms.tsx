@@ -41,6 +41,8 @@ function Tool({ icon, label, title, disabled = false, arrow = false, small = fal
 // Marge du jeu autour de son plateau, rognée par la fenêtre : en dessous, le jeu réduirait
 // son plateau pour tenir dans le cadre.
 const GAME_MARGIN = 24;
+// Intervalle de suivi du plateau du Démineur (menu déroulé, difficulté), en millisecondes.
+const FIT_MS = 200;
 
 // ----------------------------------------------------------------------------
 // Fenêtre du Démineur (Minesweeper Infinite) : le jeu dans un cadre, sans navigateur.
@@ -48,13 +50,24 @@ const GAME_MARGIN = 24;
 // le plateau et la barre de menus, s'agrandit le temps que le menu Game est déroulé et suit
 // les changements de difficulté ; onResize reçoit l'écart en pixels. En mode « Fit to
 // window », c'est le jeu qui remplit la fenêtre. Ailleurs, elle garde sa taille de départ.
+// active est vrai quand la fenêtre se voit : hors champ ou réduite, l'ajustement s'arrête.
 // ----------------------------------------------------------------------------
-export function XpGameWindow({ app, onResize }: { app: XpWindowApp; onResize(dw: number, dh: number): void }) {
+export function XpGameWindow({ app, active, onResize }: { app: XpWindowApp; active: boolean; onResize(dw: number, dh: number): void }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const timerRef = useRef(0);
   const fitRef = useRef(onResize);
+  // Ajustement de la fenêtre au plateau, prêt une fois la page du jeu chargée.
+  const fitterRef = useRef<(() => void) | null>(null);
   fitRef.current = onResize;
-  useEffect(() => () => window.clearInterval(timerRef.current), []);
+  // Suivi du plateau toutes les FIT_MS tant que la fenêtre se voit ; arrêté sinon et au démontage.
+  useEffect(() => {
+    window.clearInterval(timerRef.current);
+    const fit = fitterRef.current;
+    if (!active || fit === null) return undefined;
+    fit();
+    timerRef.current = window.setInterval(fit, FIT_MS);
+    return () => window.clearInterval(timerRef.current);
+  }, [active]);
   function handleLoad(): void {
     const frame = frameRef.current;
     let doc: Document | null = null;
@@ -83,9 +96,11 @@ export function XpGameWindow({ app, onResize }: { app: XpWindowApp; onResize(dw:
       const dh = height - (frame.clientHeight - 2 * GAME_MARGIN);
       if (dw !== 0 || dh !== 0) fitRef.current(dw, dh);
     };
+    fitterRef.current = fit;
     window.clearInterval(timerRef.current);
+    if (!active) return;
     fit();
-    timerRef.current = window.setInterval(fit, 200);
+    timerRef.current = window.setInterval(fit, FIT_MS);
   }
   const outset = { left: -GAME_MARGIN, top: -GAME_MARGIN, width: `calc(100% + ${2 * GAME_MARGIN}px)`, height: `calc(100% + ${2 * GAME_MARGIN}px)` };
   return (

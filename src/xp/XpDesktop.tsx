@@ -56,8 +56,19 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
   // --------------------------------------------------------------- fenêtres
   const topZ = () => windows.reduce((max, win) => Math.max(max, win.frame.z), 0);
   const focused = windows.filter((win) => !win.frame.minimized).sort((a, b) => b.frame.z - a.frame.z)[0]?.id ?? null;
+  // Modifie le cadre d'une fenêtre ; sans écart réel, la liste reste la même (aucun rendu).
   const update = (id: string, change: (frame: XpWindowFrame) => Partial<XpWindowFrame>) =>
-    setWindows((list) => list.map((win) => (win.id === id ? { ...win, frame: { ...win.frame, ...change(win.frame) } } : win)));
+    setWindows((list) => {
+      let changed = false;
+      const next = list.map((win) => {
+        if (win.id !== id) return win;
+        const patch = change(win.frame);
+        if (!(Object.keys(patch) as (keyof XpWindowFrame)[]).some((key) => patch[key] !== win.frame[key])) return win;
+        changed = true;
+        return { ...win, frame: { ...win.frame, ...patch } };
+      });
+      return changed ? next : list;
+    });
   const focus = (id: string) => update(id, (frame) => (frame.z === topZ() && !frame.minimized ? {} : { z: topZ() + 1, minimized: false }));
   function open(win: Omit<Win, 'frame'>, size: { w: number; h: number }): void {
     setStartOpen(false);
@@ -171,7 +182,7 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
             {app?.kind === 'browser' && <XpBrowser app={app} labels={labels} asset={asset} active={live} />}
             {app?.kind === 'player' && <XpPlayer app={app} labels={labels} active={live} />}
             {app?.kind === 'window' && (
-              <XpGameWindow app={app} onResize={(dw, dh) => update(win.id, (frame) => {
+              <XpGameWindow app={app} active={live} onResize={(dw, dh) => update(win.id, (frame) => {
                 const w = Math.min(AREA.width, frame.w + dw);
                 const h = Math.min(AREA.height, frame.h + dh);
                 return { w, h, x: Math.max(0, Math.min(frame.x, AREA.width - w)), y: Math.max(0, Math.min(frame.y, AREA.height - h)) };

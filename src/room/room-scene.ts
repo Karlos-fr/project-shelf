@@ -23,6 +23,8 @@ import { buildLegoMoc } from './lego-moc.ts';
 import { buildOutlet } from './outlet.ts';
 import { buildDoor, buildLightSwitch, DOOR_W } from './door.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
+import { pixelRatioFor } from './render-quality.ts';
+import { mergeStatic } from './merge-static.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
@@ -30,13 +32,15 @@ export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'ba
 // Zone cliquable : un meuble qui mène à une vue.
 export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'switch' | 'poster' | 'baywatch' | 'cube' | 'lego';
 export type RoomHit = { zone: RoomZone | null; index: number };
+// Coins de la dalle du CRT dans le canvas, en pixels CSS : haut gauche, haut droit, bas droit, bas gauche.
+export type ScreenQuad = [[number, number], [number, number], [number, number], [number, number]];
 
 export type RoomSceneOptions = {
   canvas: HTMLCanvasElement;
   // Projets de l'étagère : seulement ceux qui ont eu un support physique.
   items: readonly ShelfSceneItem[];
   // Contenu du bureau façon XP peint sur l'écran 3D du PC.
-  pc: Pick<PcEnv, 'labels' | 'projects' | 'asset'>;
+  pc: Pick<PcEnv, 'locale' | 'labels' | 'asset'>;
   // Préfixes des fichiers servis sous /room/ et /shelf/, base de déploiement incluse.
   roomBase: string;
   shelfBase: string;
@@ -58,6 +62,8 @@ export type RoomScene = {
   gpu: string;
   // Nombre d'images dessinées depuis le chargement, pour le compteur de FPS.
   frames(): number;
+  // Appels de dessin de la dernière image (ombres comprises), pour la mesure ?draws.
+  drawCalls(): number;
   setView(view: RoomView): void;
   setActive(index: number): void;
   setZoom(index: number): void;
@@ -71,10 +77,10 @@ export type RoomScene = {
   // Interrupteur de la porte : allume ou éteint l'ampoule du plafond.
   toggleLight(): void;
   pick(clientX: number, clientY: number): RoomHit;
-  // Rectangle de la dalle du CRT dans le canvas, en pixels CSS, une fois la caméra arrivée.
-  // Coins de la dalle du CRT projetés dans le canvas, en pixels CSS (haut gauche, haut droit,
-  // bas droit, bas gauche), quand elle fait face à la caméra ; sinon null.
-  screenQuad(): [[number, number], [number, number], [number, number], [number, number]] | null;
+  // Suit la dalle du CRT : listener reçoit ses coins projetés dans le canvas (null quand elle
+  // ne fait pas face à la caméra), tout de suite puis dans l'image même où la caméra bouge ou
+  // le cadre change de taille. Rien n'est calculé tant que rien ne bouge. null le retire.
+  onScreenQuad(listener: ((quad: ScreenQuad | null) => void) | null): void;
   // Interface HTML placée sous le canvas, sur la dalle : la vitre n'y ajoute plus que ses reflets,
   // et tout objet devant l'écran le cache au pixel près.
   setScreenOverlay(on: boolean): void;
@@ -152,7 +158,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const renderer = new THREE.WebGPURenderer({ canvas, alpha: true, antialias: true, powerPreference: 'high-performance' });
   await renderer.init();
   if ((renderer.backend as { isWebGPUBackend?: boolean }).isWebGPUBackend !== true) { renderer.dispose(); throw new WebGpuUnavailableError(); }
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
   renderer.toneMapping = THREE.NeutralToneMapping;
   renderer.toneMappingExposure = 1.2;
   renderer.shadowMap.enabled = true;
@@ -386,6 +391,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
 
   // --------------------------------------------------------------- ordinateur
   const pc = await pcLoad;
+  // Pièces immobiles du PC fusionnées par matériau (câbles, grille, boutons, façades).
+  mergeStatic(pc.group, { keep: (geometry) => { keep(geometry); }, minShadowSize: 0.003 });
   pc.group.position.set(DESK.x, DESK.h, DESK.z);
   pc.group.userData.zone = 'desk';
   scene.add(pc.group);
@@ -431,6 +438,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const plug = outlet.group.localToWorld(outlet.cableStart.clone());
   cube.group.updateMatrixWorld(true);
   const jack = cube.group.localToWorld(POWER_JACK.clone());
+  // Volume du cube : ses LED ne demandent un rendu que s'il est dans le champ.
+  const cubeBounds = new THREE.Box3().setFromObject(cube.group);
   const cablePath = new THREE.CatmullRomCurve3([
     [jack.x - 0.004, jack.y, jack.z],
     [jack.x - 0.02, jack.y - 0.004, jack.z + 0.01],
@@ -473,6 +482,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   let goal: Pose = clonePose(current);
   let progress = 1;
   let drawn = 0;
+  // Appels de dessin de la dernière image dessinée.
+  let lastDrawCalls = 0;
   const wake = (ms = 1600) => { awakeUntil = Math.max(awakeUntil, performance.now() + ms); };
   const damp = (a: number, b: number, k: number, dt: number) => (reducedMotion ? b : a + (b - a) * (1 - Math.exp(-k * dt)));
   // Boîte de l'étagère privée d'ombre pendant qu'elle est sortie (-1 : aucune).
@@ -486,6 +497,14 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   };
   // Pose de la caméra à l'image précédente, pour savoir si elle bouge.
   const lastView = new THREE.Matrix4();
+  // Champ de la caméra, recalculé quand elle bouge, et matrice de travail pour le calculer.
+  const frustum = new THREE.Frustum();
+  const frustumMatrix = new THREE.Matrix4();
+  // Taille du canvas en pixels CSS, relue seulement au redimensionnement.
+  const viewSize = new THREE.Vector2(1, 1);
+  // Suivi de la dalle par l'interface HTML : écouteur, et besoin d'un nouveau calcul.
+  let quadListener: ((quad: ScreenQuad | null) => void) | null = null;
+  let quadDirty = true;
   const scratch = new THREE.Vector3();
 
   // Pose visée : la vue courante, ou une boîte de l'étagère vue de face.
@@ -535,6 +554,11 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   function resize(): void {
     const rect = canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) return;
+    // Taille gardée pour projeter la dalle sans relire la mise en page à chaque image.
+    viewSize.set(rect.width, rect.height);
+    quadDirty = true;
+    // Grand cadre très dense : nombre de pixels plafonné (render-quality.ts).
+    renderer.setPixelRatio(pixelRatioFor(rect.width, rect.height, window.devicePixelRatio));
     renderer.setSize(rect.width, rect.height, false);
     camera.aspect = rect.width / rect.height;
     camera.updateProjectionMatrix();
@@ -560,7 +584,10 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     // La souris ne fait plus qu'incliner la boîte zoomée ; elle ne déplace pas la caméra.
     sway.x = damp(sway.x, zoomed >= 0 ? pointer.x : 0, 2.5, dt);
     sway.y = damp(sway.y, zoomed >= 0 ? pointer.y : 0, 2.5, dt);
-    if (Math.abs(sway.x - (zoomed >= 0 ? pointer.x : 0)) > 0.002) busy = true;
+    // Arrivé à moins d'un seuil invisible, l'amortissement se cale sur sa cible : sinon la
+    // valeur s'en approche sans fin et la scène redessine des écarts imperceptibles.
+    if (Math.abs(sway.x - (zoomed >= 0 ? pointer.x : 0)) > 0.002 || Math.abs(sway.y - (zoomed >= 0 ? pointer.y : 0)) > 0.002) busy = true;
+    else sway.set(zoomed >= 0 ? pointer.x : 0, zoomed >= 0 ? pointer.y : 0);
     // Autour du cube et de l'île, le glissé fait tourner la caméra.
     const orbiting = view === 'cube' || view === 'lego';
     if (orbiting) {
@@ -579,6 +606,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     gaze.yawShown = damp(gaze.yawShown, gaze.yaw, 10, dt);
     gaze.pitchShown = damp(gaze.pitchShown, gaze.pitch, 10, dt);
     if (Math.abs(gaze.yawShown - gaze.yaw) > 0.0005 || Math.abs(gaze.pitchShown - gaze.pitch) > 0.0005) busy = true;
+    else { gaze.yawShown = gaze.yaw; gaze.pitchShown = gaze.pitch; }
     gazeAim.subVectors(current.target, camera.position).applyAxisAngle(THREE.Object3D.DEFAULT_UP, gaze.yawShown);
     gazeAim.applyAxisAngle(scratch.crossVectors(gazeAim, THREE.Object3D.DEFAULT_UP).normalize(), gaze.pitchShown);
     camera.lookAt(gazeAim.add(camera.position));
@@ -586,6 +614,10 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     const moving = !lastView.equals(camera.matrixWorld);
     lastView.copy(camera.matrixWorld);
     if (camera.fov !== current.fov) { camera.fov = current.fov; camera.updateProjectionMatrix(); }
+    // La dalle suit la caméra dans l'image même où elle bouge : l'interface HTML posée dessus
+    // n'a pas une image de retard, et rien n'est recalculé caméra immobile.
+    if ((moving || quadDirty) && quadListener !== null) { quadDirty = false; quadListener(projectScreen()); }
+    if (moving) frustum.setFromProjectionMatrix(frustumMatrix.multiplyMatrices(camera.projectionMatrix, camera.matrixWorldInverse));
 
     const boxesMoving = model.update(dt, active, zoomed, zoomed >= 0 ? sway.x : 0, damp);
     if (boxesMoving) busy = true;
@@ -600,11 +632,14 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       busy = true;
     }
     if (pc.update(performance.now())) busy = true;
-    // Images du Photon virtuel reçues depuis le dernier rendu.
-    const cubeChanged = cube.update(performance.now());
+    // Images du Photon virtuel reçues depuis le dernier rendu : appliquées tout de suite, mais
+    // elles ne justifient un rendu que si le cube est dans le champ.
+    const cubeChanged = cube.update(performance.now()) && frustum.intersectsBox(cubeBounds);
     if (busy || moving || performance.now() < awakeUntil || cubeChanged || options.continuous === true) {
       renderer.render(scene, camera);
       drawn += 1;
+      // Lu tout de suite : la boucle d'animation remet le compteur à zéro à chaque tour.
+      lastDrawCalls = renderer.info.render.drawCalls;
     }
   }
 
@@ -686,7 +721,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   const raycaster = new THREE.Raycaster();
   const islandHit = new THREE.Vector3();
   const quadRay = new THREE.Vector3();
-  const quadCache: { key: string; quad: ReturnType<RoomScene['screenQuad']> } = { key: '', quad: null };
   const ndc = new THREE.Vector2();
   const zoneOf = (object: THREE.Object3D | null): RoomZone | null => {
     for (let node = object; node !== null; node = node.parent) {
@@ -695,9 +729,22 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     }
     return null;
   };
+  // ----------------------------------------------------------------------------
+  // Coins de la dalle du CRT projetés dans le canvas, en pixels CSS.
+  // Retour : null si la dalle tourne le dos à la caméra ou passe derrière elle.
+  // ----------------------------------------------------------------------------
+  function projectScreen(): ScreenQuad | null {
+    const center = pc.screenCenter();
+    if (pc.screenNormal().dot(quadRay.subVectors(camera.position, center)) <= 0) return null;
+    const points = pc.screenCorners().map((corner) => corner.project(camera));
+    if (points.some((p) => p.z < -1 || p.z > 1)) return null;
+    return points.map((p) => [(p.x + 1) / 2 * viewSize.x, (1 - p.y) / 2 * viewSize.y]) as ScreenQuad;
+  }
+
   return {
     gpu,
     frames: () => drawn,
+    drawCalls: () => lastDrawCalls,
     setView(next) {
       if (next === view) return;
       view = next;
@@ -745,20 +792,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
     },
-    screenQuad() {
-      const rect = canvas.getBoundingClientRect();
-      // Rien n'a bougé depuis le dernier appel : même réponse.
-      const key = `${camera.matrixWorld.elements.join(',')}|${rect.width}|${rect.height}`;
-      if (key === quadCache.key) return quadCache.quad;
-      quadCache.key = key;
-      quadCache.quad = null;
-      const center = pc.screenCenter();
-      if (pc.screenNormal().dot(quadRay.subVectors(camera.position, center)) <= 0) return null;
-      const points = pc.screenCorners().map((corner) => corner.project(camera));
-      if (points.some((p) => p.z < -1 || p.z > 1)) return null;
-      const quad = points.map((p) => [(p.x + 1) / 2 * rect.width, (1 - p.y) / 2 * rect.height] as [number, number]);
-      quadCache.quad = quad as [[number, number], [number, number], [number, number], [number, number]];
-      return quadCache.quad;
+    onScreenQuad(listener) {
+      quadListener = listener;
+      if (listener !== null) listener(projectScreen());
     },
     setScreenOverlay(on) { pc.setOverlay(on); wake(); },
     setPower(state) { pc.setPower(state); wake(); },
@@ -769,6 +805,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       if (next === running) return;
       running = next;
       renderer.setAnimationLoop(next ? frame : null);
+      // Onglet masqué : le firmware du cube s'arrête aussi, il reprend où il en était.
+      virtualCube.setPaused(!next);
       if (next) wake();
     },
     dispose() {

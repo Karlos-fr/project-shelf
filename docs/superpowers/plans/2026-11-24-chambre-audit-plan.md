@@ -1,6 +1,6 @@
 # La chambre — plan de corrections après audit
 
-> Date : 24 novembre 2026. Statut : **lot 1 fait** (non commité), lots 2 à 5 à faire.
+> Date : 24 novembre 2026. Statut : **lots 1 et 2 faits**, lots 3 à 5 à faire.
 > Source : audit en lecture seule du 23 novembre 2026 (scène, page, PC et bureau XP, cube L3D, île LEGO, objets).
 > Hors périmètre : le repli WebGL, écarté pour l'instant.
 
@@ -338,19 +338,19 @@ Le rendu de la chambre ne dessine que si quelque chose bouge. Les étapes 2.1 à
 | 1.6 Course au redémarrage | ☑ | | Relecture du code ; non reproduit (demande un System.reset() depuis le studio). |
 | 1.7 EEPROM contrôlée | ☑ | | tests/unit/virtual-cube.test.ts (decodeEeprom) ; contrôle de taille aussi dans le worker. |
 | 1.8 Boutons du lecteur | ☑ | | Relecture du code (référence lue au clic). |
-| 2.1 Placement XP hors React | ☐ | | |
-| 2.2 Compteur du BIOS | ☐ | | |
-| 2.3 Respiration de la LED | ☐ | | |
-| 2.4 Firmware en pause | ☐ | | |
-| 2.5 Culling du cube | ☐ | | |
-| 2.6 Lumière du Photon | ☐ | | |
-| 2.7 Appels de dessin | ☐ | | |
-| 2.8 Île LEGO en Uint16 | ☐ | | |
-| 2.9 Bureau peint allégé | ☐ | | |
-| 2.10 Démineur | ☐ | | |
-| 2.11 Pointeur par image | ☐ | | |
-| 2.12 Libération du cube | ☐ | | |
-| 2.13 Qualité adaptative | ☐ | | |
+| 2.1 Placement XP hors React | ☑ | | Suivi de la dalle appelé par la scène quand la caméra bouge, transformation écrite sans rendu React. Navigateur : bureau XP aligné pendant la transition et après redimensionnement. Ajout : les amortissements (regard, inclinaison) se calent sur leur cible, un glissé de 5 px ne redessine plus ~4 s mais ~1,5 s. |
+| 2.2 Compteur du BIOS | ☑ | | Rendu React par image jusqu'à l'invite F1, puis toutes les 240 ms. Ajout : le voyant disque ne redessine plus la pièce qu'à ses changements. Navigateur (?draws), BIOS en attente de F1 : 0 à 2 img/s au lieu d'un rendu par image ; F1 mène bien au bureau. |
+| 2.3 Respiration de la LED | ☑ | | 24 paliers de luminosité ; images du cube ignorées pour le rendu hors du champ. Non mesuré : demande le studio L3D pour démarrer le firmware. |
+| 2.4 Firmware en pause | ☑ | | Messages pause/reprise du worker, envoyés par setRunning. Relecture du code ; non mesuré (firmware non démarré). |
+| 2.5 Culling du cube | ☑ | | Sphères englobantes des instances ; vue du cube vérifiée au navigateur (rien ne disparaît). |
+| 2.6 Lumière du Photon | ☑ | | Lumière retirée, lentille émissive seule. |
+| 2.7 Appels de dessin | ☑ | | ?draws, Intel gen-9, 1024 × 768 : vue d'ensemble 559 → 238 appels, étagère 356 → 146 ; vue du cube 126, bureau 65 (pas de mesure avant). Étagère en 4 maillages (veinage inscrit dans les UV), magazines en 6, pièces fixes du cube et du PC fusionnées par matériau (src/room/merge-static.ts), plus d'ombre sous 3 mm. |
+| 2.8 Île LEGO en Uint16 | ☑ | | ile-du-tresor.bin 3 043 372 → 2 023 464 octets, réencodé sans la source Studio et relu à l'identique ; convertisseur et chargeur à jour (anciens fichiers toujours lus). |
+| 2.9 Bureau peint allégé | ☑ | | Plus d'affiches de projets ni d'horloge figée ; langue passée explicitement (une partie de 4.2). |
+| 2.10 Démineur | ☑ | | Suivi arrêté hors champ ou fenêtre réduite ; une mise à jour sans écart ne relance plus de rendu. Intervalle gardé (le plateau est dans une iframe). Non vérifié au navigateur. |
+| 2.11 Pointeur par image | ☑ | | Lancer de rayon au plus une fois par image ; curseur et clics vérifiés au navigateur. |
+| 2.12 Libération du cube | ☑ | | InstancedMesh et texture de halo libérés. L'attribut de couleur des LED n'a pas de dispose() : il part avec le renderer. |
+| 2.13 Qualité adaptative | ◐ | | Plafond de 4 millions de pixels (src/room/render-quality.ts, testé). Ombres gardées en 2048 : elles ne sont recalculées qu'au déplacement d'une boîte, leur taille pèse peu sur l'image courante. Non mesuré sur une seconde machine. |
 | 3.1 Vues au clavier | ☐ | | |
 | 3.2 Menu Démarrer et focus | ☐ | | |
 | 3.3 Bouton Quitter l'écran | ☐ | | |

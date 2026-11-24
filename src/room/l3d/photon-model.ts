@@ -221,7 +221,6 @@ export function buildPhoton(data: PhotonData): PhotonModel {
   const statusColour = uniform(new THREE.Color(0, 0, 0));
   const lens = new THREE.MeshPhysicalNodeMaterial({ color: 0xf4f2ee, roughness: 0.25, clearcoat: 1 });
   lens.emissiveNode = statusColour.mul(14);
-  const glow = new THREE.PointLight(0xffffff, 0, 0.09, 2);
 
   for (const part of data.parts) {
     if (part.mirror || part.package.includes("_BOT")) continue;
@@ -257,8 +256,6 @@ export function buildPhoton(data: PhotonData): PhotonModel {
       const disc = new THREE.Mesh(new THREE.CylinderGeometry(0.72 * MM, 0.72 * MM, 0.2 * MM, 24), lens);
       disc.position.y = 0.6 * MM;
       mesh.add(disc);
-      glow.position.y = 1.2 * MM;
-      mesh.add(glow);
     } else if (pkg === "LED-0603-NO-SS") {
       mesh = box(0.8, 0.55, 1.6, new THREE.MeshStandardMaterial({ color: 0xe8eef3, roughness: 0.4 }));
     } else if (pkg === "AT7020") {
@@ -307,6 +304,7 @@ export function buildPhoton(data: PhotonData): PhotonModel {
     matrix.makeTranslation(x * MM, (1.2 - pinLength / 2) * MM, -y * MM);
     pins.setMatrixAt(index, matrix);
   });
+  pins.computeBoundingSphere();
   group.add(pins);
 
   group.traverse((object) => {
@@ -315,9 +313,9 @@ export function buildPhoton(data: PhotonData): PhotonModel {
   return {
     group,
     setStatus(r, g, b) {
+      // La lentille emissive suffit : une lumiere de 9 cm serait evaluee par tous les
+      // materiaux de la chambre, a chaque pixel, pour un eclat invisible a cette distance.
       statusColour.value.setRGB(r, g, b);
-      glow.color.setRGB(r, g, b);
-      glow.intensity = 0.004 * Math.max(r, g, b);
     },
   };
 }

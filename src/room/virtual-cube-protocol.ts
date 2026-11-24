@@ -15,6 +15,12 @@ export type PhotonSignal = 'off' | 'power-on' | 'network-connecting' | 'cloud-co
 // Message de la page au worker : module du firmware et EEPROM sauvegardée (ou null).
 export type WorkerInit = { kind: 'init'; emulatorUrl: string; eeprom: Uint8Array | null };
 
+// Message de la page au worker : met le firmware en pause (onglet masqué) ou le relance.
+export type WorkerPause = { kind: 'pause'; paused: boolean };
+
+// Tous les messages de la page au worker.
+export type WorkerIn = WorkerInit | WorkerPause;
+
 // Messages du worker à la page : image des LED (RGB, ordre y, x, z), EEPROM modifiée,
 // état du firmware et signal de la LED d'état.
 export type WorkerOut =

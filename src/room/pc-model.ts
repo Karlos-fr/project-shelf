@@ -10,17 +10,16 @@ import * as THREE from 'three/webgpu';
 import { float, lights, max, output, texture, uv, vec4 } from 'three/tsl';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { canvas2d, loadImage, printNormal } from '../shelf/shelf-materials.ts';
-import { SHORTCUT_SVG, svgUrl, XP_CORNER, XP_HEIGHT, XP_TASKBAR, XP_WIDTH, type XP_FILES } from '../xp/xp-art.ts';
-
-export type PcIcon = { label: string; image: string; crossOrigin?: 'anonymous' };
+import { XP_CORNER, XP_HEIGHT, XP_TASKBAR, XP_WIDTH, type XP_FILES } from '../xp/xp-art.ts';
 
 export type PcEnv = {
   keep: <V extends { dispose(): void }>(value: V) => V;
   maxAniso: number;
   smudgeTex: THREE.Texture;
-  // Contenu du bureau affiché sur l'écran 3D : icônes système puis projets.
+  // Langue des écrans peints (BIOS, accueil, arrêt).
+  locale: 'fr' | 'en';
+  // Libellés du bureau peint sur l'écran 3D : icônes système et bouton Démarrer.
   labels: { start: string; myComputer: string; myDocuments: string; recycleBin: string };
-  projects: readonly PcIcon[];
   // URL d'un fichier d'origine de XP (fond Bliss, icônes).
   asset: (name: keyof typeof XP_FILES) => string;
 };
@@ -332,7 +331,7 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
     setScreen(phase) {
       const context = screenCanvas.getContext('2d');
       if (context === null) return;
-      paintPhase(context, phase, desktopCopy, logo, env.labels.start === 'start' ? 'en' : 'fr');
+      paintPhase(context, phase, desktopCopy, logo, env.locale);
       screenTexture.needsUpdate = true;
     },
     pressPower() { pressedAt = performance.now(); },
@@ -346,9 +345,12 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
         moving = true;
       }
       if (powerState !== 'busy') return moving;
-      // Accès disque irréguliers : le voyant orange scintille.
+      // Accès disque irréguliers : le voyant orange scintille. Seul un changement d'état du
+      // voyant demande un rendu, pas chaque image de la séquence de démarrage.
       const flicker = Math.sin(time * 0.031) + Math.sin(time * 0.017 + 1.3) + Math.sin(time * 0.0071);
-      diskLed.emissiveIntensity = flicker > 0.6 ? 3 : 0.2;
+      const intensity = flicker > 0.6 ? 3 : 0.2;
+      if (intensity === diskLed.emissiveIntensity) return moving;
+      diskLed.emissiveIntensity = intensity;
       return true;
     },
     screenCorners() {
@@ -367,43 +369,31 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
 }
 
 // ----------------------------------------------------------------------------
-// Peint le bureau façon XP pour l'écran 3D : fond, icônes, barre des tâches.
-// Retour : toile 1024 x 768. Les affiches illisibles laissent une icône vide.
+// Peint le bureau façon XP pour l'écran 3D : fond Bliss, icônes système, barre des tâches.
+// Le vrai bureau HTML le recouvre dès que la dalle fait face à la caméra : ce fond ne se voit
+// qu'un instant (chargement, retour à l'allumage). Il ne charge donc ni les affiches des
+// projets ni l'heure, qui seraient figées. Retour : toile 1024 x 768.
 // ----------------------------------------------------------------------------
 async function paintDesktop(env: PcEnv): Promise<HTMLCanvasElement> {
   const [canvas, context] = canvas2d(XP_WIDTH, XP_HEIGHT);
   const file = (name: keyof typeof XP_FILES) => loadImage(env.asset(name)).catch(() => null);
-  const [wallpaper, computer, documents, recycle, flag, arrow] = await Promise.all([
-    file('wallpaper'), file('computer'), file('documents'), file('recycle'), file('flag'), loadImage(svgUrl(SHORTCUT_SVG)).catch(() => null),
+  const [wallpaper, computer, documents, recycle, flag] = await Promise.all([
+    file('wallpaper'), file('computer'), file('documents'), file('recycle'), file('flag'),
   ]);
   if (wallpaper !== null) context.drawImage(wallpaper, 0, 0, XP_WIDTH, XP_HEIGHT);
-  const posters = await Promise.all(env.projects.map((project) => loadImage(project.image, project.crossOrigin).catch(() => null)));
   context.font = '11px Tahoma, Verdana, sans-serif';
   context.textAlign = 'center';
-  const icon = (image: HTMLImageElement | null, label: string, x: number, y: number, isShortcut: boolean) => {
-    if (image !== null) {
-      if (isShortcut) {
-        // Affiche recadrée au carré, comme une icône de jeu.
-        const side = Math.min(image.width, image.height);
-        context.drawImage(image, (image.width - side) / 2, (image.height - side) / 2, side, side, x + 22, y, 32, 32);
-      } else {
-        context.drawImage(image, x + 22, y, 32, 32);
-      }
-    }
-    if (isShortcut && arrow !== null) context.drawImage(arrow, x + 22, y + 22, 10, 10);
+  // Icône système 32 x 32 et son libellé ombré, en (x, y).
+  const icon = (image: HTMLImageElement | null, label: string, x: number, y: number) => {
+    if (image !== null) context.drawImage(image, x + 22, y, 32, 32);
     context.fillStyle = 'rgba(0,0,0,0.6)';
     context.fillText(label, x + 39, y + 47, 74);
     context.fillStyle = '#ffffff';
     context.fillText(label, x + 38, y + 46, 74);
   };
-  icon(computer, env.labels.myComputer, 6, 10, false);
-  icon(documents, env.labels.myDocuments, 6, 80, false);
-  env.projects.forEach((project, k) => {
-    const column = Math.floor((k + 2) / 9);
-    const row = (k + 2) % 9;
-    icon(posters[k] ?? null, project.label, 6 + column * 80, 10 + row * 70, true);
-  });
-  icon(recycle, env.labels.recycleBin, XP_WIDTH - 86, XP_HEIGHT - XP_TASKBAR - 64, false);
+  icon(computer, env.labels.myComputer, 6, 10);
+  icon(documents, env.labels.myDocuments, 6, 80);
+  icon(recycle, env.labels.recycleBin, XP_WIDTH - 86, XP_HEIGHT - XP_TASKBAR - 64);
   // Barre des tâches bleue, bouton Démarrer vert et zone de notification.
   const top = XP_HEIGHT - XP_TASKBAR;
   const bar = context.createLinearGradient(0, top, 0, XP_HEIGHT);
@@ -427,11 +417,6 @@ async function paintDesktop(env: PcEnv): Promise<HTMLCanvasElement> {
   tray.addColorStop(0, '#1290e8'); tray.addColorStop(0.1, '#19b9f3'); tray.addColorStop(0.3, '#0f8ce6'); tray.addColorStop(1, '#0d73d0');
   context.fillStyle = tray;
   context.fillRect(XP_WIDTH - 90, top, 90, XP_TASKBAR);
-  context.font = '11px Tahoma, Verdana, sans-serif';
-  context.fillStyle = '#ffffff';
-  context.textAlign = 'center';
-  const now = new Date();
-  context.fillText(`${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`, XP_WIDTH - 40, top + 19);
   return canvas;
 }
 

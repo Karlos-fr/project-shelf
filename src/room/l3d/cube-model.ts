@@ -53,6 +53,9 @@ export type CubeModel = {
   setLeds(rgb: Uint8Array): void;
   // LED d'etat du Photon, composantes de 0 a 1.
   setStatusLed(r: number, g: number, b: number): void;
+  // Ressources hors des proprietes des maillages (texture lue par un noeud, matrices
+  // d'instances), a liberer avec la scene.
+  extras: { dispose(): void }[];
 };
 
 const grid = (i: number) => (-((N - 1) * PITCH) / 2 + i * PITCH) * MM;
@@ -301,7 +304,8 @@ export function buildCube(): CubeModel {
   }
   group.add(leds);
 
-  for (const mesh of [sticks, headers, pins, leds]) mesh.frustumCulled = false;
+  // Spheres englobantes calculees sur les instances : le cube hors champ n'est pas dessine.
+  for (const mesh of [sticks, headers, pins, leds]) mesh.computeBoundingSphere();
   group.traverse((object) => {
     if (object instanceof THREE.Mesh) { object.castShadow = true; object.receiveShadow = true; }
   });
@@ -310,6 +314,7 @@ export function buildCube(): CubeModel {
   const level = new Float32Array(256).map((_, v) => (v / 255) ** 0.6);
   return {
     group,
+    extras: [face.glow, sticks, headers, pins, leds],
     setLeds(rgb) {
       const target = colours.array as Float32Array;
       for (let k = 0; k < target.length; k += 1) target[k] = level[rgb[k] ?? 0] ?? 0;

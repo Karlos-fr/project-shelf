@@ -22,6 +22,12 @@ const IDE: readonly [string, string, number][] = [
   ['  Detecting IDE Secondary Master...', ' None', 1300],
   ['  Detecting IDE Secondary Slave ...', ' None', 1500],
 ];
+// Arrêt du POST sur « Press F1 to continue », en millisecondes après l'écran vidéo : détection
+// IDE (à partir de 4300 ms, 180 ms entre deux canaux), puis erreurs disquette (700 ms) et
+// CMOS (450 ms), et 350 ms avant l'invite. Au-delà, seul le curseur bouge encore.
+const POST_HALT_MS = IDE.reduce((at, [, , wait]) => at + wait + 180, 4300) + 700 + 450 + 350;
+// Demi-période du curseur clignotant, en millisecondes.
+const CURSOR_MS = 480;
 
 // ----------------------------------------------------------------------------
 // Démarrage animé : BIOS vidéo, puis POST Award v4.51PG ligne par ligne (carte mère,
@@ -31,7 +37,8 @@ const IDE: readonly [string, string, number][] = [
 // startedAt est le début de la phase (performance.now()) : revenir à l'écran ne relance pas le POST.
 // ----------------------------------------------------------------------------
 export function AwardBios({ startedAt, onReady }: { startedAt: number; onReady?: () => void }) {
-  const elapsed = useElapsed(startedAt);
+  // Animé à chaque image jusqu'à l'arrêt sur « Press F1 », puis au rythme du curseur.
+  const elapsed = useElapsed(startedAt, VGA_MS + POST_HALT_MS, CURSOR_MS / 2);
   const t = elapsed - VGA_MS;
   // Bip court du haut-parleur quand le POST de la carte mère commence ; s'il a déjà eu lieu
   // pendant qu'on regardait ailleurs, il ne se rejoue pas en revenant.
@@ -54,10 +61,10 @@ export function AwardBios({ startedAt, onReady }: { startedAt: number; onReady?:
   });
   const floppyAt = cursor + 700;
   const cmosAt = floppyAt + 450;
-  const haltAt = cmosAt + 350;
+  const haltAt = POST_HALT_MS;
   const halted = t >= haltAt;
   useEffect(() => { if (halted) onReady?.(); }, [halted]);
-  const blink = Math.floor(elapsed / 480) % 2 === 0;
+  const blink = Math.floor(elapsed / CURSOR_MS) % 2 === 0;
 
   if (t < 0) {
     // Écran du BIOS de la carte graphique, comme sur tous les PC de l'époque.
@@ -171,14 +178,30 @@ export function XpSplash({ logo, labels, mode }: { logo: string; labels: Labels;
   );
 }
 
-// Temps écoulé depuis startedAt, rafraîchi à chaque image tant que l'écran est monté.
-function useElapsed(startedAt: number): number {
+// ----------------------------------------------------------------------------
+// Temps écoulé depuis startedAt, rafraîchi tant que l'écran est monté.
+//
+// Paramètres :
+// - startedAt : début de la phase (performance.now()).
+// - settleAt : au-delà de ce temps écoulé, en millisecondes, plus rien ne bouge à l'image près.
+// - slowMs : cadence de rafraîchissement après settleAt (le curseur qui clignote).
+//
+// Effets de bord : un rendu React par image jusqu'à settleAt, puis un tous les slowMs ;
+// minuterie arrêtée au démontage.
+// ----------------------------------------------------------------------------
+function useElapsed(startedAt: number, settleAt: number, slowMs: number): number {
   const [now, setNow] = useState(() => performance.now());
   useEffect(() => {
     let frame = 0;
-    const tick = () => { setNow(performance.now()); frame = window.requestAnimationFrame(tick); };
+    let timer = 0;
+    const tick = () => {
+      const time = performance.now();
+      setNow(time);
+      if (time - startedAt < settleAt) frame = window.requestAnimationFrame(tick);
+      else timer = window.setTimeout(tick, slowMs);
+    };
     frame = window.requestAnimationFrame(tick);
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+    return () => { window.cancelAnimationFrame(frame); window.clearTimeout(timer); };
+  }, [startedAt, settleAt, slowMs]);
   return now - startedAt;
 }

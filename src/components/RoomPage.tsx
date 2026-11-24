@@ -58,8 +58,11 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const [sceneState, setSceneState] = useState<SceneState>('loading');
   const [progress, setProgress] = useState(0);
   const [gpu, setGpu] = useState('');
-  // ?fps dans l'URL : la scène redessine en continu et affiche ses images par seconde.
-  const [fps, setFps] = useState<number | null>(null);
+  // Mesures de la scène, affichées à côté du GPU :
+  // - ?fps : la scène redessine en continu et affiche ses images par seconde ;
+  // - ?draws : rendu à la demande inchangé ; images réellement dessinées par seconde et
+  //   appels de dessin de la dernière image (pour vérifier qu'une pièce immobile ne coûte rien).
+  const [meter, setMeter] = useState<string | null>(null);
   const [noWebGpu, setNoWebGpu] = useState(false);
   const [view, setView] = useState<RoomView>('overview');
   // Glissé en cours : orbite autour du cube ou de l'île, ou, au doigt, regard dans les autres vues.
@@ -67,10 +70,17 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   const draggedRef = useRef(false);
   const [active, setActive] = useState(-1);
   const [zoomed, setZoomed] = useState(-1);
-  // Transformation CSS qui plaque le bureau XP sur la dalle 3D, dans toutes les vues où elle se voit.
-  const [screenTransform, setScreenTransform] = useState<string | null>(null);
-  // Dernière transformation connue : le bureau garde sa place, masqué, quand la dalle sort du champ.
+  // Vrai quand la dalle 3D fait face à la caméra : le bureau XP y est alors visible.
+  const [screenVisible, setScreenVisible] = useState(false);
+  // Élément du bureau XP, déplacé directement (sans rendu React) quand la caméra bouge.
+  const screenRef = useRef<HTMLDivElement>(null);
+  // Dernière transformation CSS qui plaque le bureau sur la dalle : il garde sa place, masqué,
+  // quand la dalle sort du champ, et la reprend au montage.
   const lastTransformRef = useRef('none');
+  // Survol à la souris : dernière position, et image où le test du pointeur est prévu.
+  const hoverRef = useRef<{ x: number; y: number } | null>(null);
+  const hoverFrameRef = useRef(0);
+  const hoverRunRef = useRef<(() => void) | null>(null);
   const [pc, setPc] = useState<PcState>('on');
   // Début de la phase en cours : le BIOS reprend là où il en était si l'on revient à l'écran.
   const phaseStart = useMemo(() => performance.now(), [pc]);
@@ -87,7 +97,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (consumeCrashFlag(CRASH_FLAG)) { setSceneState('failed'); return; }
     // Marque posée pendant le chargement, effacée si la page est quittée normalement.
     const releaseGuard = guardLoading(CRASH_FLAG);
-    const showFps = new URLSearchParams(window.location.search).has('fps');
+    const query = new URLSearchParams(window.location.search);
+    const showFps = query.has('fps');
+    const showDraws = query.has('draws');
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     void import('../room/room-scene.ts')
       .then(({ createRoomScene }) => createRoomScene({
@@ -95,12 +107,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
         onProgress: (fraction) => { if (!disposed) setProgress(Math.round(fraction * 100)); },
         roomBase: `${root}room/`,
         pc: {
+          locale,
           labels: XP_LABELS[locale],
           asset: (name) => xpAsset(base, name),
-          projects: summaries.map((project) => {
-            const image = assetUrl(project.preview.poster, base);
-            return { label: project.name, image, crossOrigin: crossOriginFor(image) };
-          }),
         },
         shelfBase: `${root}shelf/`,
         items: items.map(({ project, object }) => {
@@ -112,14 +121,15 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
         if (disposed) { scene.dispose(); return; }
         sceneRef.current = scene;
         setGpu(scene.gpu);
-        if (showFps) {
+        if (showFps || showDraws) {
           let last = performance.now();
           let count = scene.frames();
-          setFps(0);
+          setMeter(showFps ? '0 FPS' : '0 img/s');
           fpsTimer = window.setInterval(() => {
             const now = performance.now();
             const frames = scene.frames();
-            setFps(Math.round((frames - count) * 1000 / (now - last)));
+            const rate = Math.round((frames - count) * 1000 / (now - last));
+            setMeter(showFps ? `${rate} FPS` : `${rate} img/s · ${scene.drawCalls()} appels`);
             last = now;
             count = frames;
           }, 500);
@@ -173,26 +183,29 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     return () => window.clearTimeout(timer);
   }, [pc, sceneState]);
   // Le vrai bureau XP (HTML) est plaqué en perspective sur la dalle, de près comme de loin :
-  // l'écran 3D montre exactement ce qui est affiché. Masqué si un objet passe devant.
+  // l'écran 3D montre exactement ce qui est affiché. La scène appelle le suivi dans l'image
+  // même où la caméra bouge ; la transformation est écrite sur l'élément sans rendu React.
+  // Seul le passage visible / masqué (dalle de dos) change l'état.
   useEffect(() => {
     const scene = sceneRef.current;
-    if (scene === null) { setScreenTransform(null); return; }
-    let frame = 0;
-    const follow = () => {
-      const quad = scene.screenQuad();
+    if (scene === null) { setScreenVisible(false); return; }
+    scene.onScreenQuad((quad) => {
       const transform = quad === null ? null : quadTransform(XP_WIDTH, XP_HEIGHT, quad);
-      if (transform !== null) lastTransformRef.current = transform;
-      setScreenTransform(transform);
-      frame = window.requestAnimationFrame(follow);
-    };
-    follow();
-    return () => window.cancelAnimationFrame(frame);
+      if (transform !== null) {
+        lastTransformRef.current = transform;
+        if (screenRef.current !== null) screenRef.current.style.transform = transform;
+      }
+      setScreenVisible(transform !== null);
+    });
+    return () => scene.onScreenQuad(null);
   }, [sceneState]);
+  // Test du pointeur en attente au démontage : abandonné.
+  useEffect(() => () => window.cancelAnimationFrame(hoverFrameRef.current), []);
   // Bureau HTML monté tant que le PC n'est pas éteint, même quand la dalle sort du champ :
   // ses fenêtres, pages et vidéos survivent à un regard ailleurs. Il n'est que masqué.
   const overlayMounted = sceneState === 'ready' && pc !== 'off';
   // Bureau HTML visible sous le canvas : la vitre 3D n'y ajoute que ses reflets.
-  const overlayOn = overlayMounted && screenTransform !== null;
+  const overlayOn = overlayMounted && screenVisible;
   useEffect(() => { sceneRef.current?.setScreenOverlay(overlayOn); }, [overlayOn, sceneState]);
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
@@ -268,16 +281,35 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     }
     if (event.pointerType !== 'mouse') return;
     scene.setPointer(((event.clientX - rect.left) / rect.width) * 2 - 1, -(((event.clientY - rect.top) / rect.height) * 2 - 1));
-    const hit = scene.pick(event.clientX, event.clientY);
-    if (orbiting && hit.zone === view) { event.currentTarget.style.cursor = 'grab'; return; }
+    // Le lancer de rayon dans toute la scène ne se fait qu'une fois par image, sur la dernière position.
+    hoverRef.current = { x: event.clientX, y: event.clientY };
+    if (hoverFrameRef.current === 0) {
+      hoverFrameRef.current = window.requestAnimationFrame(() => { hoverFrameRef.current = 0; hoverRunRef.current?.(); });
+    }
+  }
+  // ----------------------------------------------------------------------------
+  // Survol, une fois par image : curseur selon l'objet visé, boîte de l'étagère mise en avant.
+  // Lit l'état courant de la page (vue, zoom) au moment où il s'exécute.
+  // ----------------------------------------------------------------------------
+  function runHover(): void {
+    const scene = sceneRef.current;
+    const canvas = canvasRef.current;
+    const position = hoverRef.current;
+    if (scene === null || canvas === null || position === null) return;
+    const hit = scene.pick(position.x, position.y);
+    if (orbiting && hit.zone === view) { canvas.style.cursor = 'grab'; return; }
     const onItem = view === 'shelf' && hit.index >= 0;
     const toZone = hit.zone !== null && (isAction(hit.zone) || zoneView(hit.zone) !== view) && !onItem ? hit.zone : null;
-    event.currentTarget.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : lookingAround ? 'grab' : 'default';
+    canvas.style.cursor = onItem ? (hit.index === zoomed ? 'zoom-out' : 'zoom-in') : toZone !== null ? 'pointer' : lookingAround ? 'grab' : 'default';
     if (onItem && zoomed < 0) setActive(hit.index);
   }
+  hoverRunRef.current = runHover;
   function handlePointerLeave(event: PointerEvent<HTMLCanvasElement>): void {
     // Au doigt, le regard reste où on l'a laissé ; la souris, elle, recentre la vue en sortant.
     if (event.pointerType !== 'mouse') return;
+    window.cancelAnimationFrame(hoverFrameRef.current);
+    hoverFrameRef.current = 0;
+    hoverRef.current = null;
     sceneRef.current?.setPointer(0, 0);
     if (zoomed < 0) setActive(-1);
   }
@@ -338,10 +370,10 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             <span className="room__percent">{progress} %</span>
           </div>
         )}
-        {sceneState === 'ready' && gpu !== '' && <span className="room__gpu">{gpu}{fps !== null && ` · ${fps} FPS`}</span>}
+        {sceneState === 'ready' && gpu !== '' && <span className="room__gpu">{gpu}{meter !== null && ` · ${meter}`}</span>}
         {overlayMounted && (
-          <div className={`room__screen is-${pc}${view === 'screen' ? '' : ' is-far'}${overlayOn ? '' : ' is-hidden'}`}
-            style={{ transform: screenTransform ?? lastTransformRef.current, borderRadius: XP_CORNER }}
+          <div ref={screenRef} className={`room__screen is-${pc}${view === 'screen' ? '' : ' is-far'}${overlayOn ? '' : ' is-hidden'}`}
+            style={{ transform: lastTransformRef.current, borderRadius: XP_CORNER }}
             aria-hidden={view !== 'screen'} inert={view !== 'screen'}
             onClick={() => { if (pc === 'bios') setPc('boot'); else if (BOOTING.includes(pc)) setPc('on'); }}>
             {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} active={view === 'screen'} onTurnOff={() => setPc('shutdown')} />}

@@ -6,12 +6,16 @@
 // Une EEPROM sauvegardée illisible ou de mauvaise taille est effacée ; un worker en
 // erreur éteint le cube.
 // ============================================================================
-import { EEPROM_SIZE, type PhotonSignal, type WorkerInit, type WorkerOut } from './virtual-cube-protocol.ts';
+import { EEPROM_SIZE, type PhotonSignal, type WorkerInit, type WorkerOut, type WorkerPause } from './virtual-cube-protocol.ts';
 
 // Clé localStorage de l'EEPROM du Photon virtuel, en base64.
 const EEPROM_KEY = 'project-shelf:l3d-eeprom';
 
-export type VirtualCube = { dispose(): void };
+export type VirtualCube = {
+  // Met le firmware en pause (onglet masqué) ou le relance là où il en était.
+  setPaused(paused: boolean): void;
+  dispose(): void;
+};
 
 // ----------------------------------------------------------------------------
 // emulatorUrl : module l3d-emulator.mjs servi sous /room/l3d/.
@@ -41,7 +45,10 @@ export function startVirtualCube(emulatorUrl: string, onFrame: (rgb: Uint8Array)
   } catch { eeprom = null; }
   const init: WorkerInit = { kind: 'init', emulatorUrl: new URL(emulatorUrl, location.href).href, eeprom };
   worker.postMessage(init);
-  return { dispose: () => worker.terminate() };
+  return {
+    setPaused(paused) { const message: WorkerPause = { kind: 'pause', paused }; worker.postMessage(message); },
+    dispose: () => worker.terminate(),
+  };
 }
 
 // ----------------------------------------------------------------------------

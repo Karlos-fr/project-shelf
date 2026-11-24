@@ -11,6 +11,7 @@
 // ============================================================================
 import * as THREE from 'three/webgpu';
 import { buildCube } from './l3d/cube-model.ts';
+import { mergeStatic } from './merge-static.ts';
 import { photonLedColour } from './l3d/photon-led.ts';
 import type { PhotonSignal } from './virtual-cube-protocol.ts';
 
@@ -23,15 +24,22 @@ export type L3dCube = {
   setFrame(rgb: Uint8Array | null): void;
   // Signal en cours de la LED d'état du Photon.
   setSignal(signal: PhotonSignal): void;
-  // Applique la dernière image reçue et le motif de la LED d'état. Retour : vrai s'il faut redessiner.
+  // Applique la dernière image reçue et le motif de la LED d'état. Retour : vrai si l'aspect du
+  // cube a changé (la scène ne redessine que si le cube est dans le champ).
   update(now: number): boolean;
 };
+
+// Paliers de luminosité de la LED d'état : la respiration (4 s) change d'aspect une
+// douzaine de fois par seconde au lieu de chaque image, sans différence visible à sa taille.
+const STATUS_LEVELS = 24;
 
 // ----------------------------------------------------------------------------
 // Construit le cube. keep enregistre ce qu'il faudra libérer.
 // ----------------------------------------------------------------------------
 export function buildL3dCube(keep: <V extends { dispose(): void }>(value: V) => V): L3dCube {
   const cube = buildCube();
+  // Pièces immobiles fusionnées par matériau (vis, composants, peignes) ; sous 3 mm, plus d'ombre.
+  mergeStatic(cube.group, { minShadowSize: 0.003 });
   // Géométries, matériaux et textures du modèle, libérés avec la scène.
   const seen = new Set<{ dispose(): void }>();
   const hold = (value: { dispose(): void }) => { if (!seen.has(value)) { seen.add(value); keep(value); } };
@@ -42,7 +50,10 @@ export function buildL3dCube(keep: <V extends { dispose(): void }>(value: V) => 
       hold(material as THREE.Material);
       for (const value of Object.values(material as object)) if (value instanceof THREE.Texture) hold(value);
     }
+    // Matrices d'instances (LED, barrettes, broches) : libérées par le maillage lui-même.
+    if (object instanceof THREE.InstancedMesh) hold(object);
   });
+  for (const value of cube.extras) hold(value);
   const black = new Uint8Array(8 * 8 * 8 * 3);
   let pending: Uint8Array | null | undefined;
   let signal: PhotonSignal = 'off';
@@ -59,8 +70,8 @@ export function buildL3dCube(keep: <V extends { dispose(): void }>(value: V) => 
         pending = undefined;
         changed = true;
       }
-      const [r, g, b] = photonLedColour(signal, now - signalStart);
-      const key = `${r.toFixed(3)},${g.toFixed(3)},${b.toFixed(3)}`;
+      const [r, g, b] = photonLedColour(signal, now - signalStart).map((c) => Math.round(c * STATUS_LEVELS) / STATUS_LEVELS) as [number, number, number];
+      const key = `${r},${g},${b}`;
       if (key !== shown) {
         shown = key;
         cube.setStatusLed(r, g, b);

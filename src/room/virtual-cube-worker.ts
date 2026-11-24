@@ -10,7 +10,7 @@
 // Un firmware introuvable éteint le cube et répond une erreur au studio ; la requête
 // suivante retente le démarrage.
 // ============================================================================
-import { EEPROM_SIZE, type PhotonSignal, type WorkerInit, type WorkerOut } from './virtual-cube-protocol.ts';
+import { EEPROM_SIZE, type PhotonSignal, type WorkerIn, type WorkerOut } from './virtual-cube-protocol.ts';
 
 // Nom du canal partagé avec le studio, même origine karlos-fr.github.io.
 const CHANNEL = 'l3d-virtual-cube';
@@ -49,7 +49,7 @@ const BOOT_SEQUENCE: [PhotonSignal, number][] = [
   ['cloud-handshake', 500],
 ];
 
-const scope = self as unknown as { postMessage(message: WorkerOut, transfer?: Transferable[]): void; onmessage: ((event: MessageEvent<WorkerInit>) => void) | null };
+const scope = self as unknown as { postMessage(message: WorkerOut, transfer?: Transferable[]): void; onmessage: ((event: MessageEvent<WorkerIn>) => void) | null };
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 let emulatorUrl = '';
 let eeprom: Uint8Array | null = null;
@@ -59,6 +59,10 @@ let serving = false;
 // Change à chaque démarrage et à chaque redémarrage : les boucles et les échanges d'une
 // instance remplacée s'arrêtent.
 let generation = 0;
+// Onglet masqué : le firmware et l'envoi des images attendent, sans rien calculer.
+let paused = false;
+// Pas d'attente du firmware en pause, en millisecondes.
+const PAUSE_POLL_MS = 200;
 
 // ----------------------------------------------------------------------------
 // Démarre le firmware : EEPROM restaurée, setup(), puis loop() en continu.
@@ -85,6 +89,7 @@ async function boot(): Promise<Emulator> {
   void (async () => {
     let lastYield = performance.now();
     while (run === generation) {
+      if (paused) { await sleep(PAUSE_POLL_MS); lastYield = performance.now(); continue; }
       await tick();
       if (performance.now() - lastYield > 8) { await sleep(0); lastYield = performance.now(); }
       if (emulator._emu_reset_requested()) { restart(); return; }
@@ -132,6 +137,7 @@ async function pump(emulator: Emulator, run: number): Promise<void> {
   const grb = emulator._emu_pixel_order_grb() === 1;
   let lastShow = -1;
   while (run === generation) {
+    if (paused) { await sleep(PAUSE_POLL_MS); continue; }
     const shows = emulator._emu_show_count();
     if (shows !== lastShow) {
       lastShow = shows;
@@ -248,7 +254,8 @@ channel.onmessage = (event: MessageEvent<{ kind?: string; id?: string }>) => {
 };
 
 scope.onmessage = (event) => {
-  if (event.data.kind !== 'init') return;
-  emulatorUrl = event.data.emulatorUrl;
-  eeprom = event.data.eeprom;
+  const message = event.data;
+  if (message.kind === 'pause') { paused = message.paused; return; }
+  emulatorUrl = message.emulatorUrl;
+  eeprom = message.eeprom;
 };

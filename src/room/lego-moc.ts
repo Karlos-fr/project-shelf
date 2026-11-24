@@ -3,7 +3,8 @@
 // ----------------------------------------------------------------------------
 // Lit le maillage compact produit par scripts/convert-moc.py à partir du fichier
 // BrickLink Studio (.io) et de la géométrie des pièces LDraw : un groupe par couleur,
-// positions entières (unité donnée par l'en-tête), indices, et coordonnées du dessus des
+// positions entières (unité donnée par l'en-tête), indices (sur 16 bits quand le groupe a
+// moins de 65 536 sommets, marqué index16 ; sinon 32 bits), et coordonnées du dessus des
 // tenons. Pas de normales : l'ombrage plat, calculé par le GPU, donne des arêtes vives
 // comme sur de vraies briques et évite des secondes de calcul au chargement. Le logo LEGO
 // des tenons est une image en relief (stud-logo.png, scripts/stud-logo.py) appliquée en
@@ -13,11 +14,12 @@
 import * as THREE from 'three/webgpu';
 import { attribute, bumpMap, step, texture, vec2 } from 'three/tsl';
 
-type MocGroup = { code: number; name: string; rgb: string; alpha: number; finish: string | null; vertices: number; indices: number };
+type MocGroup = { code: number; name: string; rgb: string; alpha: number; finish: string | null; vertices: number; indices: number; index16?: boolean };
 type MocHeader = { source: string; unit: number; logo?: boolean; groups: MocGroup[] };
 
 // Relief du logo, partagé par toutes les couleurs (un seul shader à générer). L'attribut
-// logo vaut (u, v) dans le disque du tenon, à ±120/127 au bord, et w = 1 sur son dessus.
+// logo vaut (u, v) dans le disque du tenon, à ±120/127 au bord ; sa troisième composante
+// vaut 1 sur le dessus du tenon (127 normalisé) et -1 ailleurs.
 function logoRelief(logoTex: THREE.Texture): THREE.Node<'vec3'> {
   const logo = attribute('logo', 'vec4');
   const at = logo.xy.mul(127 / 120 / 2).add(0.5);
@@ -62,8 +64,10 @@ export async function buildLegoMoc(keep: <V extends { dispose(): void }>(value: 
     const raw = new Int16Array(buffer, offset, part.vertices * 3);
     offset += part.vertices * 6;
     offset += (4 - (offset % 4)) % 4;
-    const index = new Uint32Array(buffer, offset, part.indices);
-    offset += part.indices * 4;
+    // Indices 16 bits (moitié moins lourds) quand le groupe le permet, complétés à 4 octets.
+    const index = part.index16 === true ? new Uint16Array(buffer, offset, part.indices) : new Uint32Array(buffer, offset, part.indices);
+    offset += part.indices * index.BYTES_PER_ELEMENT;
+    offset += (4 - (offset % 4)) % 4;
     const positions = Float32Array.from(raw, (value) => value * header.unit);
     const geometry = keep(new THREE.BufferGeometry());
     geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
