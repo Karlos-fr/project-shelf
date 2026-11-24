@@ -10,6 +10,8 @@ import type { PointerEvent, ReactNode } from 'react';
 export type XpWindowFrame = { x: number; y: number; w: number; h: number; z: number; minimized: boolean; maximized: boolean };
 
 export type XpWindowProps = {
+  // Identifiant de la fenêtre, repris par le bureau pour lui rendre le focus.
+  id: string;
   title: string;
   icon: string;
   frame: XpWindowFrame;
@@ -34,6 +36,7 @@ export default function XpWindow(props: XpWindowProps) {
   const box = frame.maximized ? { x: 0, y: 0, w: area.width, h: area.height } : frame;
   return (
     <section className={`xp-window${focused ? ' is-focused' : ''}${frame.maximized ? ' is-maximized' : ''}`} role="dialog" aria-label={title}
+      data-window-id={props.id} tabIndex={-1}
       hidden={frame.minimized} style={{ transform: `translate(${box.x}px, ${box.y}px)`, width: box.w, height: box.h, zIndex: 10 + frame.z }}
       onPointerDownCapture={props.onFocus}>
       <div className="xp-window__title-bg" aria-hidden="true" />

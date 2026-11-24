@@ -37,6 +37,11 @@ const CRASH_FLAG = 'project-shelf:room-loading';
 // Bouton d'alimentation et interrupteur agissent sur place ; les autres zones mènent à une vue.
 const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone === 'switch' ? 'overview' : zone);
 const isAction = (zone: RoomZone | null) => zone === 'power' || zone === 'switch';
+// Points de vue proposés au clavier, dans l'ordre de la visite, avec leur libellé.
+const VIEW_KEYS: readonly [RoomView, 'roomOverview' | 'roomDesk' | 'roomScreen' | 'roomShelf' | 'roomCube' | 'roomLego' | 'roomPoster' | 'roomBaywatch'][] = [
+  ['overview', 'roomOverview'], ['desk', 'roomDesk'], ['screen', 'roomScreen'], ['shelf', 'roomShelf'],
+  ['cube', 'roomCube'], ['lego', 'roomLego'], ['poster', 'roomPoster'], ['baywatch', 'roomBaywatch'],
+];
 // Pas d'une flèche du clavier autour du cube : 15°.
 const ORBIT_STEP = Math.PI / 12;
 
@@ -231,6 +236,13 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     const next = from < 0 ? (direction > 0 ? 0 : items.length - 1) : Math.max(0, Math.min(items.length - 1, from + direction));
     if (zoomed >= 0) zoomTo(next); else setActive(next);
   }
+  // ----------------------------------------------------------------------------
+  // Après une sortie de l'écran au clavier : le focus, laissé dans le bureau XP devenu
+  // inerte, passe au point de vue où l'on arrive, au lieu de repartir au début de la page.
+  // ----------------------------------------------------------------------------
+  function focusViewKey(target: RoomView): void {
+    window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`.room__keys [data-view="${target}"]`)?.focus());
+  }
   function back(): void {
     if (zoomed >= 0) zoomTo(-1);
     else if (view === 'screen') goTo('desk');
@@ -329,13 +341,22 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   function handleKeyDown(event: globalThis.KeyboardEvent): void {
     // Face à l'écran pendant l'allumage : F1 fait repartir le BIOS, une autre touche passe au
     // bureau. Tab, Échap, les modificateurs seuls et les touches répétées gardent leur rôle.
-    const boot = bootKey(pc, event.key, event.repeat, view === 'screen');
+    // Les boutons de la page (points de vue, sortie de l'écran) gardent Entrée et Espace.
+    const onControl = event.target instanceof HTMLElement && event.target.closest('.room__keys, .room__exit') !== null;
+    const boot = bootKey(pc, event.key, event.repeat, view === 'screen' && !onControl);
     if (boot !== null) {
       if (boot !== 'hold') setPc(boot);
       event.preventDefault();
       return;
     }
-    if (event.key === 'Escape' && (zoomed >= 0 || view !== 'overview')) { back(); event.preventDefault(); return; }
+    if (event.key === 'Escape' && (zoomed >= 0 || view !== 'overview')) {
+      // Focus dans le bureau XP : il est rendu au point de vue du bureau.
+      const fromScreen = view === 'screen' && document.activeElement?.closest('.room__screen, .room__exit') != null;
+      back();
+      if (fromScreen) focusViewKey('desk');
+      event.preventDefault();
+      return;
+    }
     if (orbiting && (event.key === 'ArrowLeft' || event.key === 'ArrowRight')) {
       sceneRef.current?.orbitView(ORBIT_STEP * (event.key === 'ArrowLeft' ? 1 : -1));
       event.preventDefault();
@@ -355,6 +376,21 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     <main className="room-page" data-state={sceneState}>
       {/* Titre et liens restent dans le HTML : lecteurs d'écran, référencement, et repli si la 3D échoue. */}
       <h1 className="sr-only">{messages.roomPageTitle}</h1>
+      {/* Points de vue au clavier : la page reste « 3D seule » à la souris ; ce menu n'apparaît
+          qu'au focus (Tab), pour aller à chaque vue et agir sur la tour ou l'interrupteur. */}
+      {sceneState === 'ready' && (
+        <nav className="room__keys" aria-label={messages.roomViews}>
+          <ul>
+            {VIEW_KEYS.map(([target, label]) => (
+              <li key={target}>
+                <button type="button" data-view={target} aria-current={view === target && zoomed < 0 ? 'true' : undefined} onClick={() => goTo(target)}>{messages[label]}</button>
+              </li>
+            ))}
+            <li><button type="button" onClick={() => { sceneRef.current?.pressPower(); togglePower(); }}>{messages.roomPower}</button></li>
+            <li><button type="button" onClick={() => sceneRef.current?.toggleLight()}>{messages.roomSwitch}</button></li>
+          </ul>
+        </nav>
+      )}
       <div className="room__stage" data-state={sceneState}
         onClick={(event) => { if (view === 'screen' && event.target === event.currentTarget) handleClick(event as unknown as MouseEvent<HTMLCanvasElement>); }}>
         <canvas ref={canvasRef} className={`room__canvas${view === 'screen' ? ' is-passive' : ''}`} aria-hidden="true"
@@ -376,13 +412,18 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
             style={{ transform: lastTransformRef.current, borderRadius: XP_CORNER }}
             aria-hidden={view !== 'screen'} inert={view !== 'screen'}
             onClick={() => { if (pc === 'bios') setPc('boot'); else if (BOOTING.includes(pc)) setPc('on'); }}>
-            {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} active={view === 'screen'} onTurnOff={() => setPc('shutdown')} />}
+            {/* Bureau actif (focus clavier, vidéos et pages en marche) une fois face à l'écran et visible. */}
+            {pc === 'on' && <XpDesktop locale={locale} catalog={xpCatalog} base={base} active={view === 'screen' && overlayOn} onTurnOff={() => setPc('shutdown')} />}
             {(pc === 'shutdown' || pc === 'collapse') && <div className="room__tube"><XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="shutdown" /></div>}
             {pc === 'warmup' && <div className="xp-power" />}
             {pc === 'bios' && <AwardBios startedAt={phaseStart} />}
             {pc === 'boot' && <XpBoot logo={xpAsset(base, 'logo')} />}
             {pc === 'welcome' && <XpSplash logo={xpAsset(base, 'logo')} labels={xp} mode="welcome" />}
           </div>
+        )}
+        {/* Sortie de l'écran, signalée et cliquable : Échap fait la même chose. */}
+        {view === 'screen' && (
+          <button type="button" className="room__exit" onClick={(event) => { back(); if (event.detail === 0) focusViewKey('desk'); }}>{xp.exit}</button>
         )}
       </div>
       <section className={sceneState === 'failed' ? 'room__fallback' : 'sr-only'} aria-labelledby="room-index">

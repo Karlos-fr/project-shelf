@@ -33,6 +33,8 @@ type Win = { id: string; appId?: string; place?: XpPlace; title: string; icon: s
 
 // Surface utile au-dessus de la barre des tâches.
 const AREA = { width: XP_WIDTH, height: XP_HEIGHT - XP_TASKBAR };
+// Éléments du menu Démarrer que les flèches parcourent (les entrées décoratives sont désactivées).
+const MENU_ITEMS = '[role="menuitem"]:not(:disabled)';
 
 // ----------------------------------------------------------------------------
 // Rend le bureau. La taille est fixe ; le parent applique la mise à l'échelle.
@@ -40,6 +42,12 @@ const AREA = { width: XP_WIDTH, height: XP_HEIGHT - XP_TASKBAR };
 export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: XpDesktopProps) {
   const labels = XP_LABELS[locale];
   const rootRef = useRef<HTMLDivElement>(null);
+  const startRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // Menu Démarrer ouvert au clavier : le focus entre dans le menu.
+  const startByKeyRef = useRef(false);
+  // Élément à qui rendre le focus après le prochain rendu : une fenêtre ou un bouton de tâche.
+  const [focusTarget, setFocusTarget] = useState<string | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [startOpen, setStartOpen] = useState(false);
   const [clock, setClock] = useState(() => formatClock(new Date()));
@@ -48,10 +56,26 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
   const asset = (name: XpFile) => xpAsset(base, name);
 
   useEffect(() => {
-    rootRef.current?.focus();
     const timer = window.setInterval(() => setClock(formatClock(new Date())), 15000);
     return () => window.clearInterval(timer);
   }, []);
+  // Écran regardé : le focus entre dans le bureau, sauf s'il y est déjà.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (active && root !== null && !root.contains(document.activeElement)) root.focus();
+  }, [active]);
+  // Menu Démarrer ouvert au clavier : focus sur sa première entrée.
+  useEffect(() => {
+    if (!startOpen || !startByKeyRef.current) return;
+    menuRef.current?.querySelector<HTMLElement>(MENU_ITEMS)?.focus();
+  }, [startOpen]);
+  // Focus demandé (fenêtre ouverte, tâche réduite) : donné une fois l'élément rendu et visible.
+  useEffect(() => {
+    if (focusTarget === null) return;
+    const element = rootRef.current?.querySelector<HTMLElement>(focusTarget);
+    if (element !== null && element !== undefined && !element.hidden) element.focus();
+    setFocusTarget(null);
+  }, [focusTarget, windows]);
 
   // --------------------------------------------------------------- fenêtres
   const topZ = () => windows.reduce((max, win) => Math.max(max, win.frame.z), 0);
@@ -72,6 +96,8 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
   const focus = (id: string) => update(id, (frame) => (frame.z === topZ() && !frame.minimized ? {} : { z: topZ() + 1, minimized: false }));
   function open(win: Omit<Win, 'frame'>, size: { w: number; h: number }): void {
     setStartOpen(false);
+    // La fenêtre ouverte (ou ramenée au premier plan) reçoit le focus clavier.
+    setFocusTarget(`[data-window-id="${win.id}"]`);
     if (windows.some((existing) => existing.id === win.id)) { focus(win.id); return; }
     // Fenêtres en cascade, comme à l'époque.
     const step = (windows.length % 8) * 26;
@@ -92,12 +118,21 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
   function openPlace(place: XpPlace): void {
     open({ id: `place:${place}`, place, title: '', icon: asset('folderSmall') }, { w: 740, h: 520 });
   }
-  const close = (id: string) => setWindows((list) => list.filter((win) => win.id !== id));
+  // Ferme une fenêtre ; le focus revient au bureau plutôt que de se perdre.
+  const close = (id: string) => {
+    setWindows((list) => list.filter((win) => win.id !== id));
+    rootRef.current?.focus();
+  };
+  // Réduit une fenêtre ; le focus passe à son bouton dans la barre des tâches.
+  const minimize = (id: string) => {
+    update(id, () => ({ minimized: true }));
+    setFocusTarget(`[data-task-id="${id}"]`);
+  };
   function toggleTask(id: string): void {
     const win = windows.find((w) => w.id === id);
     if (win === undefined) return;
-    if (id === focused) update(id, () => ({ minimized: true }));
-    else focus(id);
+    if (id === focused) minimize(id);
+    else { focus(id); setFocusTarget(`[data-window-id="${id}"]`); }
   }
   // Déplacement : le pointeur est suivi en pixels d'écran, ramenés à l'échelle du bureau.
   function dragStart(id: string, event: PointerEvent<HTMLElement>): void {
@@ -138,11 +173,28 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
   });
   const recycle: Icon = { id: 'recycle', label: labels.recycleBin, image: asset('recycle'), shortcut: false, open: () => openPlace('recycle') };
 
+  // ----------------------------------------------------------------------------
+  // Clavier du bureau : Échap ferme le menu Démarrer et rend le focus à son bouton (sans
+  // quitter l'écran) ; dans le menu, flèches haut et bas, Début et Fin parcourent les entrées.
+  // ----------------------------------------------------------------------------
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>): void {
     if (event.key === 'Escape' && startOpen) {
       setStartOpen(false);
+      startRef.current?.focus();
       event.stopPropagation();
+      event.nativeEvent.stopImmediatePropagation();
+      event.preventDefault();
+      return;
     }
+    const menu = menuRef.current;
+    if (!startOpen || menu === null || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    const items = [...menu.querySelectorAll<HTMLElement>(MENU_ITEMS)];
+    if (items.length === 0) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[current < 0 && event.key === 'ArrowUp' ? items.length - 1 : next]?.focus();
+    event.preventDefault();
   }
   function handleBackground(event: MouseEvent<HTMLDivElement>): void {
     if (event.target === event.currentTarget) { setSelected(null); setStartOpen(false); }
@@ -175,8 +227,8 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
         // Un programme ne tourne que s'il se voit : écran regardé et fenêtre non réduite.
         const live = active && !win.frame.minimized;
         return (
-          <XpWindow key={win.id} title={win.title} icon={win.icon} frame={win.frame} focused={win.id === focused} labels={windowLabels} area={AREA}
-            onFocus={() => focus(win.id)} onMinimize={() => update(win.id, () => ({ minimized: true }))}
+          <XpWindow key={win.id} id={win.id} title={win.title} icon={win.icon} frame={win.frame} focused={win.id === focused} labels={windowLabels} area={AREA}
+            onFocus={() => focus(win.id)} onMinimize={() => minimize(win.id)}
             onToggleMaximize={() => update(win.id, (frame) => ({ maximized: !frame.maximized }))} onClose={() => close(win.id)}
             onDragStart={(event) => dragStart(win.id, event)}>
             {app?.kind === 'browser' && <XpBrowser app={app} labels={labels} asset={asset} active={live} />}
@@ -196,7 +248,7 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
         );
       })}
       {startOpen && (
-        <div className="xp-start-menu" role="menu" aria-label={labels.start}>
+        <div ref={menuRef} className="xp-start-menu" role="menu" aria-label={labels.start}>
           <div className="xp-start-menu__user">
             <img src={asset('user')} alt="" />
             <strong>{XP_USER}</strong>
@@ -235,14 +287,15 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
         </div>
       )}
       <div className="xp-taskbar">
-        <button type="button" className="xp-start" aria-haspopup="menu" aria-expanded={startOpen}
-          onClick={() => setStartOpen((isOpen) => !isOpen)}>
+        <button ref={startRef} type="button" className="xp-start" aria-haspopup="menu" aria-expanded={startOpen}
+          onClick={(event) => { startByKeyRef.current = event.detail === 0; setStartOpen((isOpen) => !isOpen); }}>
           <img src={asset('flag')} alt="" draggable={false} />
           <span>{labels.start}</span>
         </button>
         <div className="xp-taskbar__tasks">
           {windows.map((win) => (
-            <button key={win.id} type="button" className={`xp-task${win.id === focused ? ' is-focused' : ''}`} title={win.title} onClick={() => toggleTask(win.id)}>
+            <button key={win.id} type="button" className={`xp-task${win.id === focused ? ' is-focused' : ''}`} title={win.title} data-task-id={win.id}
+              aria-pressed={win.id === focused} onClick={() => toggleTask(win.id)}>
               <img src={win.icon} alt="" draggable={false} />
               <span>{win.title}</span>
             </button>
@@ -254,6 +307,7 @@ export default function XpDesktop({ locale, catalog, base, active, onTurnOff }: 
   );
 }
 
+// Heure de la barre des tâches, au format 24 h « HH:MM ».
 function formatClock(date: Date): string {
   return `${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
 }

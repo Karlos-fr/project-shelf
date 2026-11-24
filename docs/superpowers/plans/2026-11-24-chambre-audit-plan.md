@@ -1,6 +1,6 @@
 # La chambre — plan de corrections après audit
 
-> Date : 24 novembre 2026. Statut : **lots 1 et 2 faits**, lots 3 à 5 à faire.
+> Date : 24 novembre 2026. Statut : **lots 1 à 3 faits**, lots 4 et 5 à faire.
 > Source : audit en lecture seule du 23 novembre 2026 (scène, page, PC et bureau XP, cube L3D, île LEGO, objets).
 > Hors périmètre : le repli WebGL, écarté pour l'instant.
 
@@ -351,9 +351,9 @@ Le rendu de la chambre ne dessine que si quelque chose bouge. Les étapes 2.1 à
 | 2.11 Pointeur par image | ☑ | | Lancer de rayon au plus une fois par image ; curseur et clics vérifiés au navigateur. |
 | 2.12 Libération du cube | ☑ | | InstancedMesh et texture de halo libérés. L'attribut de couleur des LED n'a pas de dispose() : il part avec le renderer. |
 | 2.13 Qualité adaptative | ◐ | | Plafond de 4 millions de pixels (src/room/render-quality.ts, testé). Ombres gardées en 2048 : elles ne sont recalculées qu'au déplacement d'une boîte, leur taille pèse peu sur l'image courante. Non mesuré sur une seconde machine. |
-| 3.1 Vues au clavier | ☐ | | |
-| 3.2 Menu Démarrer et focus | ☐ | | |
-| 3.3 Bouton Quitter l'écran | ☐ | | |
+| 3.1 Vues au clavier | ☑ | | Menu « Points de vue » visible au focus (Tab) : 8 vues, bouton de la tour, interrupteur ; vue courante marquée. Entrer dans l'écran met le focus dans le bureau XP ; en sortir au clavier le rend au point de vue du bureau. Vérifié au clavier dans le navigateur. Test e2e pas écrit (la scène WebGPU ne démarre pas en test). |
+| 3.2 Menu Démarrer et focus | ☑ | | Ouvert au clavier : focus sur la 1re entrée, flèches, Début/Fin ; Échap ferme et rend le focus au bouton sans quitter l'écran. Fenêtre ouverte : focus sur elle ; réduite : sur son bouton de tâche ; fermée : sur le bureau. tests/components/xp-desktop.test.tsx et navigateur. |
+| 3.3 Bouton Quitter l'écran | ☑ | | Bouton « ← Quitter l'écran » en coin dans la vue écran (libellé exit d'XP_LABELS). Vérifié au navigateur. |
 | 4.1 Découpage de room-scene | ☐ | | |
 | 4.2 Données au catalogue | ☐ | | |
 | 4.3 Protocole du cube | ☑ | | src/room/virtual-cube-protocol.ts, fait avec 1.7 (taille d'EEPROM partagée). |
