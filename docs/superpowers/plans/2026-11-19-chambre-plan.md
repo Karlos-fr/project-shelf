@@ -40,6 +40,8 @@ On propose une troisième version du site, à côté de la vitrine (`/{langue}/`
 ### Objets d'époque (ajoutés plus tard)
 - ✅ Pile de magazines au coin droit du bureau (src/room/magazines.ts) : PC Team n°36 (1998), 59 et 61 (2000) et Casus Belli n°89 et 90 (1995), couvertures d'abandonware-magazines.org.
 - ✅ Cube à LED L3D 8 x 8 x 8 de l'auteur sur le niveau sous les boîtes de jeu (src/room/l3d-cube.ts), d'après les plans du boîtier enjrolas/L3D-Hardware ; LED éteintes par défaut, câble noir jusqu'à une prise murale française à côté de l'étagère.
+- ✅ Horloge murale radiopilotée à LED bleues (d'après la Lunartec 60 LED, 27,5 x 27,5 cm) au mur du fond, entre l'affiche X-Files et la fenêtre (src/room/led-clock.ts) : heure de Paris en direct, couronne des secondes, fil d'alimentation jusque derrière le bureau.
+- ✅ Cycle jour / nuit par la fenêtre (src/room/daylight.ts) : hauteur réelle du soleil sur Paris, ciel de jour, teinte du crépuscule, nuit étoilée avec lune ; soleil, ciel et ambiance suivent, mis à jour chaque minute. `?heure=HH:MM` dans l'adresse fait partir l'horloge et le jour d'une autre heure.
 - **À venir : relier le cube au studio L3D de l'auteur (github.com/Karlos-fr/l3d-studio)** pour y jouer ses animations.
 - **À venir : les magazines pourront s'ouvrir et se feuilleter comme de vrais magazines** (pages scannées du même site).
 Game Boy, Walkman rouge, disquettes, CD, magazines PC Team. La liste sera complétée par l'auteur.

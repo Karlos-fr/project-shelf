@@ -4,16 +4,30 @@
 // HDRI atténué, soleil de fin d'après-midi par la fenêtre, lumière surfacique du ciel,
 // hémisphère d'ambiance et ampoule nue du plafond. Les cartes d'ombre ne sont recalculées
 // que sur demande (needsUpdate) : la scène les relance quand une boîte de l'étagère bouge.
+// setDaylight règle soleil, ciel et ambiance selon l'heure (daylight.ts) : la direction du
+// soleil reste fixe (carte d'ombre inchangée), seules intensités et couleurs suivent.
 // ============================================================================
 import * as THREE from 'three/webgpu';
 import { softPointShadow } from './soft-point-shadow.ts';
 import { BACK, BULB, WIN } from './room-layout.ts';
+import type { DaylightState } from './daylight.ts';
+
+// Couleurs du soleil haut et du soleil rasant du lever et du coucher.
+const SUN_HIGH = new THREE.Color(0xffeedd);
+const SUN_LOW = new THREE.Color(0xff9455);
+// Couleurs du ciel vu par la fenêtre : jour, nuit et crépuscule.
+const SKY_DAY = new THREE.Color(0xdce8ff);
+const SKY_NIGHT = new THREE.Color(0x3a4e8a);
+const SKY_DUSK = new THREE.Color(0xffb08a);
 
 export type RoomLights = {
   // Soleil qui porte ombre par la fenêtre.
   sun: THREE.DirectionalLight;
   // Ampoule du plafond, éteinte ou allumée par l'interrupteur.
   bulbLight: THREE.PointLight;
+  // Lumière surfacique du ciel dans la fenêtre, et ambiance ciel / parquet.
+  skyLight: THREE.RectAreaLight;
+  hemisphere: THREE.HemisphereLight;
 };
 
 // ----------------------------------------------------------------------------
@@ -51,7 +65,8 @@ export function addRoomLights(scene: THREE.Scene, hdr: THREE.Texture): RoomLight
   scene.add(skyLight);
   // Ambiance : ciel neutre en haut, rebond clair du parquet en bas ; ce rebond éclaire
   // aussi le plafond, qui sinon paraissait presque noir.
-  scene.add(new THREE.HemisphereLight(0xeef1f5, 0xb3a897, 0.8));
+  const hemisphere = new THREE.HemisphereLight(0xeef1f5, 0xb3a897, 0.8);
+  scene.add(hemisphere);
   // Ampoule nue au bout de son fil, au milieu du plafond : ombres nettes au bord légèrement
   // dégradé, sans bruit (soft-point-shadow.ts), recalculées seulement quand une boîte bouge.
   const bulbLight = new THREE.PointLight(0xffd9a8, 6, 0, 2);
@@ -65,5 +80,18 @@ export function addRoomLights(scene: THREE.Scene, hdr: THREE.Texture): RoomLight
   bulbLight.shadow.autoUpdate = false;
   bulbLight.shadow.needsUpdate = true;
   scene.add(bulbLight);
-  return { sun, bulbLight };
+  return { sun, bulbLight, skyLight, hemisphere };
+}
+
+// ----------------------------------------------------------------------------
+// Règle le jour de la fenêtre : soleil direct, ciel, ambiance et reflets du HDRI.
+// La nuit, il ne reste qu'un clair bleuté par la fenêtre : l'ampoule éclaire la pièce.
+// ----------------------------------------------------------------------------
+export function setDaylight(lights: RoomLights, scene: THREE.Scene, state: DaylightState): void {
+  lights.sun.intensity = 7 * state.sun;
+  lights.sun.color.copy(SUN_HIGH).lerp(SUN_LOW, state.dusk);
+  lights.skyLight.intensity = 0.35 + 4.65 * state.day;
+  lights.skyLight.color.copy(SKY_NIGHT).lerp(SKY_DAY, state.day).lerp(SKY_DUSK, state.dusk * 0.6);
+  lights.hemisphere.intensity = 0.1 + 0.7 * state.day;
+  scene.environmentIntensity = 0.04 + 0.26 * state.day;
 }

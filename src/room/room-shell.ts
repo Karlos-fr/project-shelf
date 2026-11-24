@@ -7,7 +7,8 @@
 // de l'interrupteur et l'éclat de l'ampoule, que la scène commande.
 // ============================================================================
 import * as THREE from 'three/webgpu';
-import { texture, uv } from 'three/tsl';
+import { mix, texture, uniform, uv, vec3 } from 'three/tsl';
+import type { DaylightState } from './daylight.ts';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { buildDoor, buildLightSwitch, DOOR_W, type LightSwitch } from './door.ts';
 import { BACK, BULB, DOOR, FRONT, RH, RX, WALL, WIN } from './room-layout.ts';
@@ -21,6 +22,8 @@ export type RoomShell = {
   lightSwitch: LightSwitch;
   // Verre de l'ampoule, émissif quand elle est allumée.
   bulbGlass: THREE.MeshStandardNodeMaterial;
+  // Paysage de la fenêtre selon l'heure : jour, nuit étoilée, teinte orangée du crépuscule.
+  setSky(state: DaylightState): void;
 };
 
 // ----------------------------------------------------------------------------
@@ -95,10 +98,17 @@ export function buildRoomShell(keep: Keep, pbr: WoodFactory, oak: PbrSet, plaste
   // Appui de fenêtre intérieur.
   add(room, new RoundedBoxGeometry(WIN.w + 0.12, 0.03, WALL + 0.06, 3, 0.008), trimPaint, WIN.x, WIN.y0 - 0.015, BACK - WALL / 2 + 0.03);
   // Dehors : ciel d'après-midi et collines au loin, assez lumineux pour fleurir légèrement.
+  // La nuit, même paysage en silhouettes sous un ciel étoilé ; au lever et au coucher, le
+  // jour se teinte d'orangé. Deux réglages du shader, sans le recompiler.
   const outside = keep(new THREE.CanvasTexture(landscapeCanvas()));
   outside.colorSpace = THREE.SRGBColorSpace;
+  const night = keep(new THREE.CanvasTexture(nightCanvas()));
+  night.colorSpace = THREE.SRGBColorSpace;
+  const dayAmount = uniform(1);
+  const duskAmount = uniform(0);
   const outsideMaterial = keep(new THREE.MeshBasicNodeMaterial());
-  outsideMaterial.colorNode = texture(outside, uv()).rgb.mul(1.9);
+  const daylit = texture(outside, uv()).rgb.mul(mix(vec3(1, 1, 1), vec3(1.25, 0.72, 0.52), duskAmount)).mul(1.9);
+  outsideMaterial.colorNode = mix(texture(night, uv()).rgb, daylit, dayAmount);
   add(room, new THREE.PlaneGeometry(9, 4.5), outsideMaterial, WIN.x + 0.6, 1.4, BACK - 3.2, false);
 
   // Suspension : fil textile, douille en bakélite et ampoule allumée (elle n'arrête pas sa propre lumière).
@@ -109,7 +119,53 @@ export function buildRoomShell(keep: Keep, pbr: WoodFactory, oak: PbrSet, plaste
   const bulbGlass = keep(new THREE.MeshStandardNodeMaterial({ color: 0xfff4e0, emissive: 0xffd9a8, emissiveIntensity: 6, roughness: 0.3 }));
   const bulb = add(room, new THREE.SphereGeometry(0.03, 24, 16), bulbGlass, BULB.x, BULB.y, BULB.z, false);
   bulb.scale.set(1, 1.25, 1);
-  return { room, lightSwitch, bulbGlass };
+  return {
+    room, lightSwitch, bulbGlass,
+    setSky(state) { dayAmount.value = state.day; duskAmount.value = state.dusk; },
+  };
+}
+
+// ----------------------------------------------------------------------------
+// Nuit vue par la fenêtre : ciel bleu nuit plus clair à l'horizon, étoiles, croissant de
+// lune, collines et bosquets en silhouettes sombres (mêmes reliefs que le jour).
+// Retour : toile 1024 x 512.
+// ----------------------------------------------------------------------------
+function nightCanvas(): HTMLCanvasElement {
+  const [canvas, context] = canvas2d(1024, 512);
+  const sky = context.createLinearGradient(0, 0, 0, 512);
+  sky.addColorStop(0, '#03050f'); sky.addColorStop(0.6, '#0b1430'); sky.addColorStop(0.75, '#16223f'); sky.addColorStop(1, '#16223f');
+  context.fillStyle = sky;
+  context.fillRect(0, 0, 1024, 512);
+  const rand = seeded(23);
+  for (let i = 0; i < 260; i += 1) {
+    const size = rand() < 0.92 ? 1 : 2;
+    context.globalAlpha = 0.35 + rand() * 0.65;
+    context.fillStyle = '#e8eeff';
+    context.fillRect(Math.floor(rand() * 1024), Math.floor(rand() * 330), size, size);
+  }
+  context.globalAlpha = 1;
+  // Croissant de lune : un disque clair entamé par un disque couleur du ciel.
+  context.fillStyle = '#f2f0e0';
+  context.beginPath(); context.arc(700, 110, 18, 0, Math.PI * 2); context.fill();
+  context.fillStyle = '#05091a';
+  context.beginPath(); context.arc(709, 104, 16, 0, Math.PI * 2); context.fill();
+  // Collines et bosquets : les mêmes formes que le jour (même graine), presque noires.
+  const shapes = seeded(5);
+  for (let i = 0; i < 14; i += 1) { shapes(); shapes(); shapes(); shapes(); }
+  context.filter = 'blur(3px)';
+  context.fillStyle = '#0a1018';
+  context.beginPath(); context.moveTo(0, 360);
+  for (let x = 0; x <= 1024; x += 32) context.lineTo(x, 340 + Math.sin(x * 0.006) * 24 + Math.sin(x * 0.021) * 8);
+  context.lineTo(1024, 512); context.lineTo(0, 512); context.fill();
+  context.fillStyle = '#060a10';
+  for (let i = 0; i < 30; i += 1) {
+    const x = shapes() * 1024; const r = 18 + shapes() * 30;
+    context.beginPath(); context.arc(x, 372 + shapes() * 30 - r * 0.3, r, 0, Math.PI * 2); context.fill();
+  }
+  context.fillStyle = '#080d14';
+  context.fillRect(0, 400, 1024, 112);
+  context.filter = 'none';
+  return canvas;
 }
 
 // Ciel d'après-midi, collines et bosquets flous, vus par la fenêtre.

@@ -25,6 +25,7 @@ import type { XpCatalog } from '../xp/xp-apps.ts';
 import { XP_CORNER, XP_HEIGHT, XP_LABELS, XP_WIDTH, xpAsset } from '../xp/xp-art.ts';
 import { quadTransform } from '../room/homography.ts';
 import { bootKey, BOOTING, PC_NEXT, powerOf, screenOf, type PcState } from '../room/pc-power.ts';
+import { parisOffsetFor } from '../room/daylight.ts';
 
 export type RoomPageProps = {
   config: SiteConfig;
@@ -41,9 +42,9 @@ const CRASH_FLAG = 'project-shelf:room-loading';
 const zoneView = (zone: RoomZone): RoomView => (zone === 'power' ? 'desk' : zone === 'switch' ? 'overview' : zone);
 const isAction = (zone: RoomZone | null) => zone === 'power' || zone === 'switch';
 // Points de vue proposés au clavier, dans l'ordre de la visite, avec leur libellé.
-const VIEW_KEYS: readonly [RoomView, 'roomOverview' | 'roomDesk' | 'roomScreen' | 'roomShelf' | 'roomCube' | 'roomLego' | 'roomPoster' | 'roomBaywatch'][] = [
+const VIEW_KEYS: readonly [RoomView, 'roomOverview' | 'roomDesk' | 'roomScreen' | 'roomShelf' | 'roomCube' | 'roomLego' | 'roomPoster' | 'roomBaywatch' | 'roomClock'][] = [
   ['overview', 'roomOverview'], ['desk', 'roomDesk'], ['screen', 'roomScreen'], ['shelf', 'roomShelf'],
-  ['cube', 'roomCube'], ['lego', 'roomLego'], ['poster', 'roomPoster'], ['baywatch', 'roomBaywatch'],
+  ['cube', 'roomCube'], ['lego', 'roomLego'], ['poster', 'roomPoster'], ['baywatch', 'roomBaywatch'], ['clock', 'roomClock'],
 ];
 // Pas d'une flèche du clavier autour du cube : 15°.
 const ORBIT_STEP = Math.PI / 12;
@@ -108,10 +109,14 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     const query = new URLSearchParams(window.location.search);
     const showFps = query.has('fps');
     const showDraws = query.has('draws');
+    // ?heure=HH:MM : l'horloge et le jour de la fenêtre partent de cette heure de Paris
+    // (pour voir la chambre de nuit ou au crépuscule) ; sinon, l'heure réelle.
+    const wantedTime = /^(\d{1,2}):(\d{2})$/.exec(query.get('heure') ?? '');
+    const clockOffset = wantedTime === null ? 0 : parisOffsetFor(Number(wantedTime[1]) % 24, Number(wantedTime[2]) % 60, new Date());
     const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     void import('../room/room-scene.ts')
       .then(({ createRoomScene }) => createRoomScene({
-        canvas, reducedMotion, continuous: showFps,
+        canvas, reducedMotion, continuous: showFps, clockOffset,
         onProgress: (fraction) => { if (!disposed) setProgress(Math.round(fraction * 100)); },
         roomBase: `${root}room/`,
         pc: {

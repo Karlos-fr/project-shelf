@@ -11,7 +11,9 @@
 import * as THREE from 'three/webgpu';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
 import { RectAreaLightTexturesLib } from 'three/addons/lights/RectAreaLightTexturesLib.js';
-import { addRoomLights } from './room-lights.ts';
+import { addRoomLights, setDaylight } from './room-lights.ts';
+import { buildLedClock, CLOCK_DEPTH, CLOCK_SIZE } from './led-clock.ts';
+import { daylightFor, PARIS, parisClock, solarElevation } from './daylight.ts';
 import { buildRoomShell } from './room-shell.ts';
 import { buildDesk } from './desk.ts';
 import { buildChair } from './chair.ts';
@@ -30,9 +32,9 @@ import { mergeStatic } from './merge-static.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
 import { blotchTexture, loadPbrSet, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
-export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'baywatch' | 'cube' | 'lego';
+export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'baywatch' | 'clock' | 'cube' | 'lego';
 // Zone cliquable : un meuble qui mène à une vue.
-export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'switch' | 'poster' | 'baywatch' | 'cube' | 'lego';
+export type RoomZone = 'desk' | 'shelf' | 'screen' | 'power' | 'switch' | 'poster' | 'baywatch' | 'clock' | 'cube' | 'lego';
 export type RoomHit = { zone: RoomZone | null; index: number };
 // Coins de la dalle du CRT dans le canvas, en pixels CSS : haut gauche, haut droit, bas droit, bas gauche.
 export type ScreenQuad = [[number, number], [number, number], [number, number], [number, number]];
@@ -51,6 +53,9 @@ export type RoomSceneOptions = {
   onProgress?: (fraction: number) => void;
   // Mesure (?fps dans l'URL) : redessine à chaque image, même quand rien ne bouge.
   continuous?: boolean;
+  // Décalage de l'heure de Paris, en millisecondes, pour l'horloge et le jour de la fenêtre
+  // (paramètre ?heure=HH:MM de la page) ; 0 ou absent : l'heure réelle.
+  clockOffset?: number;
 };
 
 // La chambre ne tourne qu'en WebGPU : le repli WebGL de Three.js compile ses shaders
@@ -98,6 +103,8 @@ export type RoomScene = {
 // Le plan de la pièce (murs, fenêtre, porte, bureau) est dans room-layout.ts.
 // Affiche collée à la pâte à fixe au mur du fond, au-dessus du bureau.
 const POSTER = { x: -0.32, y: 1.64 };
+// Horloge à LED au mur du fond, entre l'affiche X-Files et la fenêtre (centre, en mètres).
+const CLOCK = { x: 0.3, y: 1.86 };
 // Affiche d'Alerte à Malibu au mur de gauche, entre l'étagère et le mur d'entrée.
 const BAYWATCH = { y: 1.5, z: 0.52 };
 // Point de vue au milieu de la pièce, d'où l'on voit la porte en se retournant.
@@ -120,6 +127,7 @@ const VIEWS: Record<RoomView, Pose> = {
   desk: pose([-0.12, 1.36, 0.02], [-0.16, 0.9, -1.3], 42),
   poster: pose([POSTER.x + 0.04, POSTER.y, BACK + 1.75], [POSTER.x, POSTER.y, BACK], 40),
   baywatch: pose([-RX + 1.4, BAYWATCH.y, BAYWATCH.z + 0.03], [-RX, BAYWATCH.y, BAYWATCH.z], 40),
+  clock: pose([CLOCK.x - 0.05, CLOCK.y - 0.08, BACK + 0.95], [CLOCK.x, CLOCK.y, BACK], 28),
   // Calculée à la volée face à la dalle ; cette pose ne sert que de repli.
   screen: pose([-0.1, 0.98, -0.5], [-0.1, 0.98, -1.2], 30),
   shelf: pose([0.05, SHELF.y - 0.02, SHELF.z], [SHELF.x, SHELF.y - 0.12, SHELF.z], 44),
@@ -187,13 +195,30 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
 
   // --------------------------------------------------------------- lumière
   // Jour par la fenêtre, ciel, ambiance et ampoule du plafond (room-lights.ts).
-  const { sun, bulbLight } = addRoomLights(scene, hdr);
+  const lights = addRoomLights(scene, hdr);
+  const { sun, bulbLight } = lights;
 
   // --------------------------------------------------------------- pièce
   const add = meshAdder(keep);
   // Murs, sol, plafond, porte, interrupteur, fenêtre et suspension (room-shell.ts).
-  const { room, lightSwitch, bulbGlass } = buildRoomShell(keep, pbr, oak, plaster);
+  const { room, lightSwitch, bulbGlass, setSky } = buildRoomShell(keep, pbr, oak, plaster);
   scene.add(room);
+  // Heure de Paris (décalée par ?heure) et jour de la fenêtre, posés avant le premier rendu.
+  const clockNow = () => new Date(Date.now() + (options.clockOffset ?? 0));
+  let shownDay = -1;
+  // ----------------------------------------------------------------------------
+  // Règle soleil, ciel, ambiance et paysage selon la hauteur du soleil sur Paris à date.
+  // Retour : vrai si la part de jour a changé de façon visible (reflets de l'écran à refaire).
+  // ----------------------------------------------------------------------------
+  const applyDaylight = (date: Date): boolean => {
+    const state = daylightFor(solarElevation(date, PARIS.lat, PARIS.lon));
+    setDaylight(lights, scene, state);
+    setSky(state);
+    const visible = Math.abs(state.day - shownDay) > 0.02;
+    if (visible) shownDay = state.day;
+    return visible;
+  };
+  applyDaylight(clockNow());
 
   // --------------------------------------------------------------- bureau en hêtre
   // Hêtre clair verni, comme la chaise et l'étagère : des meubles blonds des années 90 (desk.ts).
@@ -226,6 +251,25 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   baywatch.rotation.y = Math.PI / 2;
   baywatch.userData.zone = 'baywatch';
   scene.add(baywatch);
+  // Horloge murale à LED bleues, à l'heure de Paris, et son fil d'alimentation qui descend
+  // le long du mur jusque derrière le bureau.
+  const clock = buildLedClock(keep, maxAniso);
+  clock.group.position.set(CLOCK.x, CLOCK.y, BACK);
+  clock.group.userData.zone = 'clock';
+  scene.add(clock.group);
+  const clockCable = new THREE.CatmullRomCurve3([
+    [CLOCK.x + 0.06, CLOCK.y - CLOCK_SIZE / 2 + 0.01, BACK + CLOCK_DEPTH * 0.3],
+    [CLOCK.x + 0.065, CLOCK.y - CLOCK_SIZE / 2 - 0.03, BACK + 0.006],
+    [CLOCK.x + 0.07, 1.2, BACK + 0.004],
+    [CLOCK.x + 0.08, DESK.h - 0.05, BACK + 0.004],
+  ].map(([x, y, z]) => new THREE.Vector3(x, y, z)));
+  add(scene, new THREE.TubeGeometry(clockCable, 40, 0.002, 6, false), keep(new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.5 })), 0, 0, 0);
+  clock.group.updateMatrixWorld(true);
+  // Volume de l'horloge : son changement de seconde ne demande un rendu que si elle est dans le champ.
+  const clockBounds = new THREE.Box3().setFromObject(clock.group);
+  clock.show(parisClock(clockNow()));
+  // Seconde affichée par l'horloge, pour ne la repeindre qu'une fois par seconde.
+  let clockSecond = -1;
 
   // --------------------------------------------------------------- ordinateur
   const pc = await pcLoad;
@@ -473,7 +517,17 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     // Images du Photon virtuel reçues depuis le dernier rendu : appliquées tout de suite, mais
     // elles ne justifient un rendu que si le cube est dans le champ.
     const cubeChanged = cube.update(performance.now()) && frustum.intersectsBox(cubeBounds);
-    if (busy || moving || performance.now() < awakeUntil || cubeChanged || options.continuous === true) {
+    // Horloge et jour de la fenêtre : une seconde nouvelle repeint l'affichage (rendu seulement
+    // si l'horloge se voit) ; chaque minute, la lumière suit la hauteur du soleil.
+    let clockChanged = false;
+    const second = Math.floor(clockNow().getTime() / 1000);
+    if (second !== clockSecond) {
+      clockSecond = second;
+      const date = new Date(second * 1000);
+      clockChanged = clock.show(parisClock(date)) && frustum.intersectsBox(clockBounds);
+      if (second % 60 === 0 && applyDaylight(date)) { captureReflection(); busy = true; }
+    }
+    if (busy || moving || performance.now() < awakeUntil || cubeChanged || clockChanged || options.continuous === true) {
       renderer.render(scene, camera);
       drawn += 1;
       // Lu tout de suite : la boucle d'animation remet le compteur à zéro à chaque tour.
@@ -485,7 +539,8 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Le premier rendu compile tous les shaders : c'est la dernière étape de la barre.
   renderer.render(scene, camera);
   // La vitre du moniteur reflète la chambre, pas le salon du HDRI : une photo en cubemap prise
-  // juste devant l'écran, refaite seulement quand l'ampoule s'allume ou s'éteint.
+  // juste devant l'écran, refaite seulement quand l'ampoule s'allume ou s'éteint, ou quand le
+  // jour de la fenêtre change de façon visible.
   const reflection = keep(new THREE.CubeRenderTarget(256, { type: THREE.HalfFloatType, generateMipmaps: true, minFilter: THREE.LinearMipmapLinearFilter }));
   const reflectionCamera = new THREE.CubeCamera(0.03, 12, reflection);
   reflectionCamera.position.copy(pc.screenCenter()).addScaledVector(pc.screenNormal(), 0.03);
@@ -572,7 +627,7 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
       // L'île LEGO est petite et ajourée : toute sa boîte englobante est cliquable.
       const onIsland = islandFrame === null ? null : raycaster.ray.intersectBox(islandFrame.bounds, islandHit);
       if (onIsland !== null && onIsland.distanceTo(raycaster.ray.origin) < (item?.distance ?? Infinity)) return { zone: 'lego', index: -1 };
-      const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, cube.group, model.group, poster, baywatch, room], true)[0];
+      const hit = item ?? raycaster.intersectObjects([pc.group, desk, chair, rack, cube.group, model.group, poster, baywatch, clock.group, room], true)[0];
       const index = hit?.object.userData.index;
       return { zone: zoneOf(hit?.object ?? null), index: typeof index === 'number' ? index : -1 };
     },
