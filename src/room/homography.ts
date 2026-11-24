@@ -9,14 +9,25 @@
 
 export type Point = readonly [number, number];
 
+// Aire minimale du quadrilatère, relative au carré de sa plus grande dimension : en
+// dessous, la dalle est vue par la tranche et la matrice deviendrait démesurée.
+const MIN_AREA_RATIO = 1e-6;
+// Pivot minimal de l'élimination, relatif au plus grand coefficient du système.
+const PIVOT_EPSILON = 1e-12;
+
+// ----------------------------------------------------------------------------
 // Résout A·x = b (8 x 8) par élimination de Gauss avec pivot partiel.
+// Le seuil du pivot suit l'ordre de grandeur des coefficients (jusqu'à 10⁶ en pixels²).
+// Retour : x, ou null si la matrice est singulière (quadrilatère dégénéré).
+// ----------------------------------------------------------------------------
 function solve(a: number[][], b: number[]): number[] | null {
   const n = b.length;
   const m = a.map((row, i) => [...row, b[i]!]);
+  const scale = Math.max(...a.flat().map(Math.abs), 1);
   for (let col = 0; col < n; col += 1) {
     let pivot = col;
     for (let row = col + 1; row < n; row += 1) if (Math.abs(m[row]![col]!) > Math.abs(m[pivot]![col]!)) pivot = row;
-    if (Math.abs(m[pivot]![col]!) < 1e-12) return null;
+    if (Math.abs(m[pivot]![col]!) < PIVOT_EPSILON * scale) return null;
     [m[col], m[pivot]] = [m[pivot]!, m[col]!];
     for (let row = 0; row < n; row += 1) {
       if (row === col) continue;
@@ -27,8 +38,22 @@ function solve(a: number[][], b: number[]): number[] | null {
   return m.map((row, i) => row[n]! / row[i]!);
 }
 
-// Retour : la valeur CSS « matrix3d(...) », ou null si les points sont dégénérés.
+// ----------------------------------------------------------------------------
+// Homographie qui envoie le rectangle (0, 0)–(width, height) sur les quatre points de quad
+// (haut gauche, haut droit, bas droit, bas gauche), en pixels CSS.
+// Retour : la valeur CSS « matrix3d(...) », ou null si les points sont dégénérés ou si
+// le quadrilatère est presque aplati (dalle vue par la tranche).
+// ----------------------------------------------------------------------------
 export function quadTransform(width: number, height: number, quad: readonly [Point, Point, Point, Point]): string | null {
+  // Quadrilatère aplati (coins confondus ou presque alignés) : pas de plaquage possible.
+  const xs = quad.map(([u]) => u);
+  const ys = quad.map(([, v]) => v);
+  const size = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+  const area = Math.abs(quad.reduce((sum, [u, v], i) => {
+    const [nu, nv] = quad[(i + 1) % 4]!;
+    return sum + u * nv - nu * v;
+  }, 0)) / 2;
+  if (size === 0 || area < MIN_AREA_RATIO * size * size) return null;
   const source: Point[] = [[0, 0], [width, 0], [width, height], [0, height]];
   const a: number[][] = [];
   const b: number[] = [];

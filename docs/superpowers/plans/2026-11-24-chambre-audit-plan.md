@@ -1,6 +1,6 @@
 # La chambre — plan de corrections après audit
 
-> Date : 24 novembre 2026. Statut : **lots 1 à 3 faits**, lots 4 et 5 à faire.
+> Date : 24 novembre 2026. Statut : **lots 1 à 5 faits**.
 > Source : audit en lecture seule du 23 novembre 2026 (scène, page, PC et bureau XP, cube L3D, île LEGO, objets).
 > Hors périmètre : le repli WebGL, écarté pour l'instant.
 
@@ -354,9 +354,9 @@ Le rendu de la chambre ne dessine que si quelque chose bouge. Les étapes 2.1 à
 | 3.1 Vues au clavier | ☑ | | Menu « Points de vue » visible au focus (Tab) : 8 vues, bouton de la tour, interrupteur ; vue courante marquée. Entrer dans l'écran met le focus dans le bureau XP ; en sortir au clavier le rend au point de vue du bureau. Vérifié au clavier dans le navigateur. Test e2e pas écrit (la scène WebGPU ne démarre pas en test). |
 | 3.2 Menu Démarrer et focus | ☑ | | Ouvert au clavier : focus sur la 1re entrée, flèches, Début/Fin ; Échap ferme et rend le focus au bouton sans quitter l'écran. Fenêtre ouverte : focus sur elle ; réduite : sur son bouton de tâche ; fermée : sur le bureau. tests/components/xp-desktop.test.tsx et navigateur. |
 | 3.3 Bouton Quitter l'écran | ☑ | | Bouton « ← Quitter l'écran » en coin dans la vue écran (libellé exit d'XP_LABELS). Vérifié au navigateur. |
-| 4.1 Découpage de room-scene | ☐ | | |
-| 4.2 Données au catalogue | ☐ | | |
+| 4.1 Découpage de room-scene | ☑ | | room-scene.ts : 925 → 625 lignes ; nouveaux room-layout.ts (plan de la pièce), room-mesh.ts (pose des maillages), room-lights.ts, room-shell.ts, desk.ts, chair.ts. Captures avant/après de la vue d'ensemble et du bureau identiques au pixel près (écart moyen 0). |
+| 4.2 Données au catalogue | ☑ | | Lien de démo `window: true` dans le schéma et le catalogue (Démineur) au lieu de l'identifiant codé en dur ; test xp-apps ajouté. Langue de l'écran 3D passée explicitement (fait au lot 2). |
 | 4.3 Protocole du cube | ☑ | | src/room/virtual-cube-protocol.ts, fait avec 1.7 (taille d'EEPROM partagée). |
-| 4.4 Code mort | ☐ | | |
-| 4.5 Commentaires | ☐ | | |
-| 5 Tests | ☐ | | |
+| 4.4 Code mort | ☑ | | Retirés : onReady d'AwardBios, monitor et tower de PcModel, message status du worker, acrylicFace/acrylicEdge exportés, 6ᵉ champ des pièces du cube, second silk.offset. Boutons Arrêter et Démarrage d'IE gardés, rôle commenté. |
+| 4.5 Commentaires | ☑ | | En-têtes de fonctions (RoomPage, homography, pc-model, XpPrograms, xp-art, door, outlet), lambdas, constantes (XP_*, DOOR_*, CASING, PITCH, PANEL, INNER, PCB, MM, N), en-tête de RoomPage à jour, accents ajoutés dans les commentaires de room/l3d (97 lignes, code inchangé). |
+| 5 Tests | ☑ | | tests/e2e/room.spec.ts (sans JavaScript en FR et EN, garde-fou : page de secours une fois, puis relance) ; homographie : identité, dégénéré, presque aplati (seuil de pivot relatif et contrôle d'aire ajoutés dans homography.ts) ; xp-apps : branches site web et vidéo d'aperçu ; machine d'états du PC testée depuis le lot 1 (pc-power). e2e complets : 14 passés ; build : 5 passés. Le test accepte la scène prête ou le message WebGPU : il ne vérifie pas le rendu 3D lui-même. |
