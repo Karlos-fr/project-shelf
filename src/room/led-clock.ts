@@ -74,9 +74,11 @@ export function buildLedClock(keep: Keep, anisotropy: number): LedClock {
   const display = keep(new THREE.CanvasTexture(canvas));
   display.colorSpace = THREE.SRGBColorSpace;
   display.anisotropy = anisotropy;
+  // Les reflets de l'environnement (le HDRI d'un salon éclairé) sont atténués : sur une vitre
+  // aussi noire, ils dessinaient une tache claire qui ne vient d'aucune lampe de la chambre.
   const glass = keep(new THREE.MeshPhysicalMaterial({
     color: 0x030405, roughness: 0.04, clearcoat: 1, clearcoatRoughness: 0.02,
-    emissive: 0xffffff, emissiveMap: display, emissiveIntensity: 2.2,
+    emissive: 0xffffff, emissiveMap: display, emissiveIntensity: 2.2, envMapIntensity: 0.2,
   }));
   const face = new THREE.Mesh(keep(new THREE.PlaneGeometry(CLOCK_SIZE - 2 * FRAME_LIP, CLOCK_SIZE - 2 * FRAME_LIP)), glass);
   face.position.z = CLOCK_DEPTH - 0.002;

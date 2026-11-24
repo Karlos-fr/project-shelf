@@ -19,6 +19,11 @@ const SUN_LOW = new THREE.Color(0xff9455);
 const SKY_DAY = new THREE.Color(0xdce8ff);
 const SKY_NIGHT = new THREE.Color(0x3a4e8a);
 const SKY_DUSK = new THREE.Color(0xffb08a);
+// Ambiance de l'hémisphère : ciel et rebond du parquet le jour, bleu nuit et presque noir la nuit.
+const HEMI_SKY_DAY = new THREE.Color(0xeef1f5);
+const HEMI_SKY_NIGHT = new THREE.Color(0x4a5a8a);
+const HEMI_GROUND_DAY = new THREE.Color(0xb3a897);
+const HEMI_GROUND_NIGHT = new THREE.Color(0x15161a);
 
 export type RoomLights = {
   // Soleil qui porte ombre par la fenêtre.
@@ -85,13 +90,22 @@ export function addRoomLights(scene: THREE.Scene, hdr: THREE.Texture): RoomLight
 
 // ----------------------------------------------------------------------------
 // Règle le jour de la fenêtre : soleil direct, ciel, ambiance et reflets du HDRI.
-// La nuit, il ne reste qu'un clair bleuté par la fenêtre : l'ampoule éclaire la pièce.
+// La nuit, il ne reste qu'un clair de lune bleuté et ténu par la fenêtre : lampe éteinte,
+// la pièce est sombre, seules les LED de l'horloge et l'écran du PC brillent. Les reflets
+// du HDRI (un salon de jour, chaud) tombent presque à zéro : sinon ils dessinaient une
+// tache orangée dans les vitres noires (horloge, écran éteint). bulbOn ajoute, la nuit,
+// la lumière chaude que l'ampoule renvoie par les murs et le plafond : sans elle, toute ombre
+// de l'ampoule serait d'un noir total.
 // ----------------------------------------------------------------------------
-export function setDaylight(lights: RoomLights, scene: THREE.Scene, state: DaylightState): void {
+export function setDaylight(lights: RoomLights, scene: THREE.Scene, state: DaylightState, bulbOn: boolean): void {
   lights.sun.intensity = 7 * state.sun;
   lights.sun.color.copy(SUN_HIGH).lerp(SUN_LOW, state.dusk);
-  lights.skyLight.intensity = 0.35 + 4.65 * state.day;
+  lights.skyLight.intensity = 0.15 + 4.85 * state.day;
   lights.skyLight.color.copy(SKY_NIGHT).lerp(SKY_DAY, state.day).lerp(SKY_DUSK, state.dusk * 0.6);
-  lights.hemisphere.intensity = 0.1 + 0.7 * state.day;
-  scene.environmentIntensity = 0.04 + 0.26 * state.day;
+  // Part de l'ambiance due à l'ampoule : pleine la nuit, nulle en plein jour.
+  const bounce = bulbOn ? 1 - state.day : 0;
+  lights.hemisphere.intensity = 0.03 + 0.77 * state.day + 0.14 * bounce;
+  lights.hemisphere.color.copy(HEMI_SKY_NIGHT).lerp(HEMI_SKY_DAY, Math.max(state.day, bounce * 0.7));
+  lights.hemisphere.groundColor.copy(HEMI_GROUND_NIGHT).lerp(HEMI_GROUND_DAY, Math.max(state.day, bounce * 0.8));
+  scene.environmentIntensity = 0.003 + 0.297 * state.day;
 }

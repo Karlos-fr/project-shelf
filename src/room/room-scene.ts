@@ -206,13 +206,17 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   // Heure de Paris (décalée par ?heure) et jour de la fenêtre, posés avant le premier rendu.
   const clockNow = () => new Date(Date.now() + (options.clockOffset ?? 0));
   let shownDay = -1;
+  // Jour courant de la fenêtre et état de l'ampoule : l'ambiance dépend des deux.
+  let daylight = daylightFor(0);
+  let bulbOn = true;
   // ----------------------------------------------------------------------------
   // Règle soleil, ciel, ambiance et paysage selon la hauteur du soleil sur Paris à date.
   // Retour : vrai si la part de jour a changé de façon visible (reflets de l'écran à refaire).
   // ----------------------------------------------------------------------------
   const applyDaylight = (date: Date): boolean => {
     const state = daylightFor(solarElevation(date, PARIS.lat, PARIS.lon));
-    setDaylight(lights, scene, state);
+    daylight = state;
+    setDaylight(lights, scene, state, bulbOn);
     setSky(state);
     const visible = Math.abs(state.day - shownDay) > 0.02;
     if (visible) shownDay = state.day;
@@ -609,6 +613,9 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
     },
     toggleLight() {
       lightOn = !lightOn;
+      bulbOn = lightOn;
+      // L'ambiance de la nuit dépend de l'ampoule (lumière renvoyée par les murs).
+      setDaylight(lights, scene, daylight, bulbOn);
       bulbLight.intensity = lightOn ? 6 : 0;
       bulbGlass.emissiveIntensity = lightOn ? 6 : 0;
       lightSwitch.setOn(lightOn);
