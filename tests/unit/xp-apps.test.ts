@@ -19,16 +19,36 @@ describe('buildXpCatalog', () => {
     expect(apps['with-demo']).toMatchObject({ kind: 'browser', url: 'https://demo.example.test/' });
   });
 
-  it('ouvre le Démineur dans sa propre fenêtre, sans navigateur', () => {
-    const project = withId(publicProjectFixture(), 'minesweeper-infinite', { links: [{ type: 'demo', url: 'https://demo.example.test/' }] });
+  it('ouvre une démo marquée window dans sa propre fenêtre, sans navigateur', () => {
+    const project = withId(publicProjectFixture(), 'minesweeper-infinite', { links: [{ type: 'demo', url: 'https://demo.example.test/', window: true }] });
     const { apps } = buildXpCatalog([project], fixtureCategories, 'fr', '/');
     expect(apps['minesweeper-infinite']).toMatchObject({ kind: 'window', url: 'https://demo.example.test/' });
+  });
+
+  it('ne déduit pas la fenêtre propre de l’identifiant du projet', () => {
+    const project = withId(publicProjectFixture(), 'minesweeper-infinite', { links: [{ type: 'demo', url: 'https://demo.example.test/' }] });
+    const { apps } = buildXpCatalog([project], fixtureCategories, 'fr', '/');
+    expect(apps['minesweeper-infinite']).toMatchObject({ kind: 'browser' });
   });
 
   it('passe la vidéo au Lecteur Windows Media quand il n’y a pas de démo', () => {
     const project = withId(mediaProject(), 'with-video', { links: [] });
     const { apps } = buildXpCatalog([project], fixtureCategories, 'fr', '/shelf/');
     expect(apps['with-video']).toMatchObject({ kind: 'player', video: '/shelf/media/example/demo.mp4', poster: '/shelf/media/example/video-poster.webp' });
+  });
+
+  it('lit la vidéo d’aperçu quand le projet n’a ni démo ni vidéo de galerie', () => {
+    const base = publicProjectFixture();
+    const project = withId(base, 'preview-only', { links: [], media: [], preview: { poster: base.preview.poster, video: '/media/example/preview.mp4' } });
+    const { apps } = buildXpCatalog([project], fixtureCategories, 'fr', '/shelf/');
+    expect(apps['preview-only']).toMatchObject({ kind: 'player', video: '/shelf/media/example/preview.mp4', poster: apps['preview-only']!.icon });
+  });
+
+  it('ouvre le site du projet dans Internet Explorer quand il n’a ni démo ni vidéo', () => {
+    const base = publicProjectFixture();
+    const project = withId(base, 'site-only', { links: [{ type: 'website', url: 'https://site.example.test/' }], media: [], preview: { poster: base.preview.poster } });
+    const { apps } = buildXpCatalog([project], fixtureCategories, 'fr', '/');
+    expect(apps['site-only']).toMatchObject({ kind: 'browser', url: 'https://site.example.test/' });
   });
 
   it('affiche la fiche du projet quand il n’a ni démo, ni vidéo, ni site', () => {

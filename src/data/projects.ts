@@ -533,7 +533,7 @@ export const PROJECT_CATALOGUE: Catalogue = {
         { type: 'image', src: `${MINESWEEPER_RAW}/doc/icon.png`, alt: { en: 'Minesweeper Infinite icon: a mine on an infinite grid', fr: 'Icône de Minesweeper Infinite : une mine sur une grille infinie' }, width: 1254, height: 1254 },
       ],
       links: [
-        { type: 'demo', url: 'https://karlos-fr.github.io/minesweeper-infinite/' },
+        { type: 'demo', url: 'https://karlos-fr.github.io/minesweeper-infinite/', window: true },
         { type: 'documentation', url: 'https://github.com/Karlos-fr/minesweeper-infinite#readme' },
       ],
       content: {

@@ -10,12 +10,19 @@
 import * as THREE from 'three/webgpu';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
+// Enregistre une ressource GPU à libérer avec la scène.
 type Keep = <V extends { dispose(): void }>(value: V) => V;
 
+// Largeur et hauteur du vantail, en mètres (porte intérieure standard de 83 x 204 cm).
 export const DOOR_W = 0.83;
 export const DOOR_H = 2.04;
+// Largeur du chambranle autour du vantail, en mètres.
 const CASING = 0.07;
 
+// ----------------------------------------------------------------------------
+// Construit la porte : vantail à deux panneaux moulurés, chambranle, paumelles, béquille.
+// keep enregistre ce qu'il faudra libérer. Origine : milieu du seuil, face vers +z.
+// ----------------------------------------------------------------------------
 export function buildDoor(keep: Keep): THREE.Group {
   const group = new THREE.Group();
   const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {
@@ -64,7 +71,10 @@ export function buildDoor(keep: Keep): THREE.Group {
 
 export type LightSwitch = { group: THREE.Group; setOn(on: boolean): void };
 
-// L'interrupteur porte la zone « switch » : un clic dessus allume ou éteint l'ampoule.
+// ----------------------------------------------------------------------------
+// Construit l'interrupteur à bascule sur sa plaque. Il porte la zone « switch » : un clic
+// dessus allume ou éteint l'ampoule. Retour : le groupe et setOn, qui bascule la touche.
+// ----------------------------------------------------------------------------
 export function buildLightSwitch(keep: Keep): LightSwitch {
   const group = new THREE.Group();
   group.userData.zone = 'switch';

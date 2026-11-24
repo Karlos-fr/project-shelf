@@ -14,7 +14,10 @@ import { SHORTCUT_SVG, svgUrl, type XP_LABELS, type XpFile } from './xp-art.ts';
 type Labels = (typeof XP_LABELS)['fr'] | (typeof XP_LABELS)['en'];
 type Asset = (name: XpFile) => string;
 
-// Barre de menus texte, identique dans chaque programme.
+// ----------------------------------------------------------------------------
+// Barre de menus texte, identique dans chaque programme, et animation Windows à droite.
+// Les menus sont décoratifs (aria-hidden) : aucun ne s'ouvre.
+// ----------------------------------------------------------------------------
 function MenuBar({ labels, asset, extra }: { labels: Labels; asset: Asset; extra?: ReactNode }) {
   return (
     <div className="xp-app__menubar">
@@ -27,7 +30,11 @@ function MenuBar({ labels, asset, extra }: { labels: Labels; asset: Asset; extra
   );
 }
 
+// Bouton de barre d'outils : icône, libellé facultatif, petite flèche de liste déroulante.
 type ToolProps = { icon: string; label?: string; title: string; disabled?: boolean; arrow?: boolean; small?: boolean; onClick?: () => void };
+// ----------------------------------------------------------------------------
+// Bouton de barre d'outils ; sans onClick, il est désactivé (présent pour l'aspect).
+// ----------------------------------------------------------------------------
 function Tool({ icon, label, title, disabled = false, arrow = false, small = false, onClick }: ToolProps) {
   return (
     <button type="button" className="xp-app__tool" disabled={disabled || onClick === undefined} title={title} aria-label={title} onClick={onClick}>
@@ -141,6 +148,8 @@ export function XpBrowser({ app, labels, asset, active }: { app: XpBrowserApp; l
       <div className="xp-app__toolbar">
         <Tool icon={asset('back')} label={labels.back} title={labels.back} arrow disabled />
         <Tool icon={asset('forward')} title={labels.forward} arrow disabled />
+        {/* Arrêter ne coupe que l'indicateur de chargement : une page d'une autre origine ne
+            s'interrompt pas. Démarrage recharge la démo, sa seule page d'accueil. */}
         <Tool icon={asset('stop')} title={labels.stop} onClick={() => setLoading(false)} />
         <Tool icon={asset('refresh')} title={labels.refresh} onClick={() => { setLoading(true); setReload((n) => n + 1); }} />
         <Tool icon={asset('home')} title={labels.home} onClick={() => { setLoading(true); setReload((n) => n + 1); }} />
@@ -232,6 +241,7 @@ export function XpPlayer({ app, labels, active }: { app: XpPlayerApp; labels: La
   );
 }
 
+// Durée en secondes au format « MM:SS » du Lecteur Windows Media ; 00:00 si inconnue.
 function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds)) return '00:00';
   const s = Math.floor(seconds);

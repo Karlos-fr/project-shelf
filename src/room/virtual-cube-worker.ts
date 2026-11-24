@@ -85,7 +85,6 @@ async function boot(): Promise<Emulator> {
   const tick = emulator.cwrap('emu_tick', null, [], { async: true });
   scope.postMessage({ kind: 'led', signal: 'cloud-connected' });
   await setup();
-  scope.postMessage({ kind: 'status', running: true });
   void (async () => {
     let lastYield = performance.now();
     while (run === generation) {

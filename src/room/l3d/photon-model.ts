@@ -1,14 +1,14 @@
 // ============================================================================
-// PhotonModel - Particle Photon v1.0.0 du cube L3D, a l'identique
+// PhotonModel - Particle Photon v1.0.0 du cube L3D, à l'identique
 // ----------------------------------------------------------------------------
-// Construit le Photon a partir de son fichier de fabrication Eagle
+// Construit le Photon à partir de son fichier de fabrication Eagle
 // (github.com/particle-iot/photon, extrait dans case_data.json par
-// scripts/cube-assets.mjs) : circuit noir mat a serigraphie bleue (#00A0E3,
-// couleur du composant Fritzing officiel de Particle), etoile Particle en
-// cuivre dore a nu, module Wi-Fi P0 sous capot, antenne ceramique ACX, u.FL,
-// micro-USB, boutons SETUP et RESET, LED RGB d'etat et barrettes males.
-// Repere local : mm du fichier Eagle -> x = x, z = -y ; face composants vers +y,
-// circuit entre y = -1 mm et 0. Ce fichier ne connait ni la scene ni le firmware.
+// scripts/cube-assets.mjs) : circuit noir mat à sérigraphie bleue (#00A0E3,
+// couleur du composant Fritzing officiel de Particle), étoile Particle en
+// cuivre doré à nu, module Wi-Fi P0 sous capot, antenne céramique ACX, u.FL,
+// micro-USB, boutons SETUP et RESET, LED RGB d'état et barrettes mâles.
+// Repère local : mm du fichier Eagle -> x = x, z = -y ; face composants vers +y,
+// circuit entre y = -1 mm et 0. Ce fichier ne connaît ni la scène ni le firmware.
 // ============================================================================
 
 import * as THREE from "three/webgpu";
@@ -27,20 +27,20 @@ export type PhotonData = {
 
 const MM = 0.001;
 export const PHOTON_PCB = 1.0;
-// Barrette male : entretoise de 2,5 mm sous le circuit.
+// Barrette mâle : entretoise de 2,5 mm sous le circuit.
 export const PHOTON_SPACER = 2.5;
 const SILK = "#00a0e3";
 const GOLD = "#d4ad57";
 
 export type PhotonModel = {
   group: THREE.Group;
-  // Couleur de la LED d'etat, composantes de 0 a 1.
+  // Couleur de la LED d'état, composantes de 0 à 1.
   setStatus(r: number, g: number, b: number): void;
 };
 
 // ----------------------------------------------------------------------------
-// Face composants du circuit : epargne noire, serigraphie, cuivre dore a nu
-// (etoile, pastilles des broches et demi-trous metallises des bords).
+// Face composants du circuit : épargne noire, sérigraphie, cuivre doré à nu
+// (étoile, pastilles des broches et demi-trous métallisés des bords).
 // ----------------------------------------------------------------------------
 function boardTexture(data: PhotonData, width: number, height: number): THREE.CanvasTexture {
   const scale = 48;
@@ -53,7 +53,7 @@ function boardTexture(data: PhotonData, width: number, height: number): THREE.Ca
   const Y = (y: number) => element.height - y * scale;
   g.fillStyle = "#0d0d0e";
   g.fillRect(0, 0, element.width, element.height);
-  // Cuivre a nu, finition or.
+  // Cuivre à nu, finition or.
   g.fillStyle = GOLD;
   for (const polygon of data.copper) {
     g.beginPath();
@@ -65,7 +65,7 @@ function boardTexture(data: PhotonData, width: number, height: number): THREE.Ca
     g.beginPath();
     g.arc(X(x), Y(y), 0.89 * scale, 0, Math.PI * 2);
     g.fill();
-    // Demi-trou metallise sur le chant du circuit.
+    // Demi-trou métallisé sur le chant du circuit.
     const edge = x < width / 2 ? 0 : width;
     g.beginPath();
     g.arc(X(edge), Y(y), 0.55 * scale, 0, Math.PI * 2);
@@ -77,7 +77,7 @@ function boardTexture(data: PhotonData, width: number, height: number): THREE.Ca
     g.arc(X(x), Y(y), 0.5 * scale, 0, Math.PI * 2);
     g.fill();
   }
-  // Serigraphie.
+  // Sérigraphie.
   g.strokeStyle = SILK;
   g.fillStyle = SILK;
   g.lineCap = "round";
@@ -119,7 +119,7 @@ function boardTexture(data: PhotonData, width: number, height: number): THREE.Ca
   return map;
 }
 
-// Capot du module P0 : aluminium brosse, marquage laser gris (P0, USI, code 2D, etoile).
+// Capot du module P0 : aluminium brosse, marquage laser gris (P0, USI, code 2D, étoile).
 function moduleTexture(): THREE.CanvasTexture {
   const size = 512;
   const element = document.createElement("canvas");
@@ -134,7 +134,7 @@ function moduleTexture(): THREE.CanvasTexture {
     g.fillRect(0, (i * 7919) % size, size, 1);
   }
   g.fillStyle = "#6f7377";
-  // Code 2D deterministe.
+  // Code 2D déterministe.
   let seed = 7;
   for (let y = 0; y < 18; y += 1) for (let x = 0; x < 18; x += 1) {
     seed = (seed * 1103515245 + 12345) & 0x7fffffff;
@@ -147,7 +147,7 @@ function moduleTexture(): THREE.CanvasTexture {
   g.font = "34px Arial, sans-serif";
   g.fillText("BM-09-S", 60, 350);
   g.fillText("2B9004", 60, 395);
-  // Etoile Particle.
+  // Étoile Particle.
   g.save();
   g.translate(390, 330);
   g.beginPath();
@@ -170,7 +170,7 @@ function moduleTexture(): THREE.CanvasTexture {
 }
 
 // ----------------------------------------------------------------------------
-// Construit le Photon avec ses barrettes males, LED d'etat eteinte.
+// Construit le Photon avec ses barrettes mâles, LED d'état éteinte.
 // ----------------------------------------------------------------------------
 export function buildPhoton(data: PhotonData): PhotonModel {
   const group = new THREE.Group();
@@ -190,12 +190,12 @@ export function buildPhoton(data: PhotonData): PhotonModel {
   const orange = new THREE.MeshStandardMaterial({ color: 0xf08a3c, roughness: 0.6 });
   const grey = new THREE.MeshStandardMaterial({ color: 0x3b3c3e, roughness: 0.55 });
 
-  // Circuit : contour Eagle extrude, face composants serigraphiee.
+  // Circuit : contour Eagle extrude, face composants sérigraphiée.
   const shape = new THREE.Shape(data.outline.map(([x, y]) => new THREE.Vector2(x * MM, y * MM)));
   const pcbGeometry = new THREE.ExtrudeGeometry(shape, { depth: PHOTON_PCB * MM, bevelEnabled: false });
   pcbGeometry.rotateX(-Math.PI / 2);
   pcbGeometry.translate(0, -PHOTON_PCB * MM, 0);
-  // Le dessous reste en epargne noire ; la face composants porte la serigraphie.
+  // Le dessous reste en épargne noire ; la face composants porte la sérigraphie.
   const mask = new THREE.MeshPhysicalMaterial({ color: 0x0d0d0e, roughness: 0.62, clearcoat: 0.15, clearcoatRoughness: 0.5, envMapIntensity: 0.6 });
   group.add(new THREE.Mesh(pcbGeometry, [mask, fr4]));
   const faceGeometry = new THREE.ShapeGeometry(shape);
@@ -209,7 +209,7 @@ export function buildPhoton(data: PhotonData): PhotonModel {
     mesh.position.set(x * MM, y * MM, z * MM);
     return mesh;
   };
-  // Passif CMS : corps et deux terminaisons etamees.
+  // Passif CMS : corps et deux terminaisons étamées.
   const passive = (length: number, w: number, h: number, material: THREE.Material) => {
     const part = new THREE.Group();
     part.add(box(length * 0.64, h, w, material));
@@ -217,7 +217,7 @@ export function buildPhoton(data: PhotonData): PhotonModel {
     return part;
   };
 
-  // LED RGB d'etat CREE CLMVB-FKA : boitier blanc, lentille diffusante allumee par le systeme.
+  // LED RGB d'état CREE CLMVB-FKA : boîtier blanc, lentille diffusante allumée par le système.
   const statusColour = uniform(new THREE.Color(0, 0, 0));
   const lens = new THREE.MeshPhysicalNodeMaterial({ color: 0xf4f2ee, roughness: 0.25, clearcoat: 1 });
   lens.emissiveNode = statusColour.mul(14);
@@ -259,7 +259,7 @@ export function buildPhoton(data: PhotonData): PhotonModel {
     } else if (pkg === "LED-0603-NO-SS") {
       mesh = box(0.8, 0.55, 1.6, new THREE.MeshStandardMaterial({ color: 0xe8eef3, roughness: 0.4 }));
     } else if (pkg === "AT7020") {
-      // Antenne ceramique ACX AT7020 : 7 x 2 mm, bout marque orange.
+      // Antenne céramique ACX AT7020 : 7 x 2 mm, bout marque orange.
       mesh = new THREE.Group();
       mesh.add(box(7, 1.2, 2, ceramic));
       mesh.add(box(1.4, 1.21, 2.01, orange, 2.6));
@@ -289,7 +289,7 @@ export function buildPhoton(data: PhotonData): PhotonModel {
     group.add(holder);
   }
 
-  // Barrettes males : entretoise noire sous le circuit, broches dorees qui depassent sur le dessus.
+  // Barrettes mâles : entretoise noire sous le circuit, broches dorées qui dépassent sur le dessus.
   const rows = [...new Set(data.pins.map((p) => p[0]))];
   for (const x of rows) {
     const column = data.pins.filter((p) => p[0] === x).map((p) => p[1]);
@@ -313,8 +313,8 @@ export function buildPhoton(data: PhotonData): PhotonModel {
   return {
     group,
     setStatus(r, g, b) {
-      // La lentille emissive suffit : une lumiere de 9 cm serait evaluee par tous les
-      // materiaux de la chambre, a chaque pixel, pour un eclat invisible a cette distance.
+      // La lentille émissive suffit : une lumière de 9 cm serait évaluée par tous les
+      // matériaux de la chambre, à chaque pixel, pour un éclat invisible à cette distance.
       statusColour.value.setRGB(r, g, b);
     },
   };

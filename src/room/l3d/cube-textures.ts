@@ -1,10 +1,10 @@
 // ============================================================================
-// CubeTextures - Textures dessinees du cube L3D (LED, serigraphie, gravure)
+// CubeTextures - Textures dessinées du cube L3D (LED, sérigraphie, gravure)
 // ----------------------------------------------------------------------------
-// Toutes les textures sont peintes sur canvas a partir des photos du cube reel
-// et des plans officiels : face de la LED WS2812B 5050, serigraphie blanche des
-// barrettes noires (D1 a D8, J1) et gravure laser des panneaux en acrylique.
-// Ce fichier ne connait ni la scene ni l'emulateur.
+// Toutes les textures sont peintes sur canvas à partir des photos du cube réel
+// et des plans officiels : face de la LED WS2812B 5050, sérigraphie blanche des
+// barrettes noires (D1 à D8, J1) et gravure laser des panneaux en acrylique.
+// Ce fichier ne connaît ni la scène ni l'émulateur.
 // ============================================================================
 
 import * as THREE from "three/webgpu";
@@ -30,22 +30,22 @@ function toTexture(element: HTMLCanvasElement, colour = true): THREE.CanvasTextu
 }
 
 // ----------------------------------------------------------------------------
-// Face avant d'une WS2812B : boitier blanc, lentille ronde en resine, cadre de
+// Face avant d'une WS2812B : boîtier blanc, lentille ronde en résine, cadre de
 // connexion en trois secteurs, trois puces (rouge, verte, bleue) et le circuit
-// de commande. Retour : couleur et masque d'emission (la lentille).
+// de commande. Retour : couleur et masque d'émission (la lentille).
 // ----------------------------------------------------------------------------
 export function ledFaceTextures(): { map: THREE.CanvasTexture; glow: THREE.CanvasTexture } {
   const size = 256;
   const [element, g] = canvas(size, size);
   g.fillStyle = "#f3f1ea";
   g.fillRect(0, 0, size, size);
-  // Liseré plus sombre du moulage, coins legerement casses.
+  // Liseré plus sombre du moulage, coins légèrement cassés.
   g.strokeStyle = "rgba(120,115,105,0.45)";
   g.lineWidth = 6;
   g.strokeRect(3, 3, size - 6, size - 6);
   const c = size / 2;
   const r = size * 0.43;
-  // Cavite : resine laiteuse sur un fond reflechissant.
+  // Cavité : résine laiteuse sur un fond réfléchissant.
   const cavity = g.createRadialGradient(c, c * 0.95, r * 0.1, c, c, r);
   cavity.addColorStop(0, "#e9e6e3");
   cavity.addColorStop(0.75, "#cfcac6");
@@ -54,7 +54,7 @@ export function ledFaceTextures(): { map: THREE.CanvasTexture; glow: THREE.Canva
   g.beginPath();
   g.arc(c, c, r, 0, Math.PI * 2);
   g.fill();
-  // Cadre de connexion : trois secteurs separes par des fentes sombres en Y.
+  // Cadre de connexion : trois secteurs séparés par des fentes sombres en Y.
   g.strokeStyle = "rgba(95,88,82,0.75)";
   g.lineWidth = 7;
   g.lineCap = "round";
@@ -82,7 +82,7 @@ export function ledFaceTextures(): { map: THREE.CanvasTexture; glow: THREE.Canva
     g.quadraticCurveTo(c + (x0 + x1) / 2, c + Math.min(y0, y1) - 10, c + x1, c + y1);
     g.stroke();
   }
-  // Masque d'emission : la lentille entiere, plus forte au centre.
+  // Masque d'émission : la lentille entière, plus forte au centre.
   const [glowElement, m] = canvas(size, size);
   m.fillStyle = "#000";
   m.fillRect(0, 0, size, size);
@@ -99,8 +99,8 @@ export function ledFaceTextures(): { map: THREE.CanvasTexture; glow: THREE.Canva
 }
 
 // ----------------------------------------------------------------------------
-// Serigraphie d'une barrette (repere mm du contour, origine au bas, x centre) :
-// « J1 » au-dessus du connecteur, « D1 » a « D8 » sous chaque LED, a la verticale.
+// Sérigraphie d'une barrette (repère mm du contour, origine au bas, x centre) :
+// « J1 » au-dessus du connecteur, « D1 » à « D8 » sous chaque LED, à la verticale.
 // Retour : texture et transformation UV (les UV de l'extrusion sont en mm).
 // ----------------------------------------------------------------------------
 export function stickSilkscreen(length: number, leds: Point[], header: Point): THREE.CanvasTexture {
@@ -124,7 +124,7 @@ export function stickSilkscreen(length: number, leds: Point[], header: Point): T
   };
   leds.forEach(([x, y], index) => vertical(`D${index + 1}`, x + 0.2, y - 5.4));
   g.fillText("J1", X(header[0] - 1.6), Y(header[1] + 3));
-  // Pastilles du connecteur J1 (2 x 2 au pas de 2,54 mm), etamees.
+  // Pastilles du connecteur J1 (2 x 2 au pas de 2,54 mm), étamées.
   g.fillStyle = "#b9b4a6";
   for (const dx of [-1.27, 1.27]) for (const dy of [-1.27, 1.27]) {
     g.beginPath();
@@ -138,8 +138,8 @@ export function stickSilkscreen(length: number, leds: Point[], header: Point): T
 }
 
 // ----------------------------------------------------------------------------
-// Gravure laser (repere mm du panneau) : contours remplis en pair-impair, ce qui
-// donne les lettres evidees de « L3D » et le texte plein, comme sur le cube.
+// Gravure laser (repère mm du panneau) : contours remplis en pair-impair, ce qui
+// donne les lettres évidées de « L3D » et le texte plein, comme sur le cube.
 // Retour : texture blanche sur fond transparent et rectangle couvert, en mm.
 // ----------------------------------------------------------------------------
 export function engravingTexture(loops: Point[][]): { map: THREE.CanvasTexture; box: { x0: number; y0: number; x1: number; y1: number } } {

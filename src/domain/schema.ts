@@ -30,8 +30,10 @@ const PreviewFocusSchema = z.strictObject({ x: PercentSchema, y: PercentSchema }
 export const CategorySchema = z.strictObject({ id: SlugSchema, label: LocalizedTextSchema });
 // Types d'actions externes reconnus par la fiche.
 const ProjectLinkTypeSchema = z.enum(['demo', 'website', 'release', 'documentation']);
-// Lien de fiche vers une ressource externe, sans type arbitraire.
-const ProjectLinkSchema = z.strictObject({ type: ProjectLinkTypeSchema, url: HttpsUrlSchema });
+// Lien de fiche vers une ressource externe, sans type arbitraire. window marque une démo
+// qui imite un programme de bureau (le Démineur) : sur le PC de la chambre, elle s'ouvre
+// dans sa propre fenêtre au lieu d'Internet Explorer.
+const ProjectLinkSchema = z.strictObject({ type: ProjectLinkTypeSchema, url: HttpsUrlSchema, window: z.optional(z.literal(true)) });
 // Piste de sous-titres associée à une vidéo publiable.
 const CaptionTrackSchema = z.strictObject({
   src: MediaSourceSchema,

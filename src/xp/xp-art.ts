@@ -6,13 +6,16 @@
 // ============================================================================
 import type { Locale } from '../domain/locale.ts';
 
-// Résolution interne du bureau : celle d'un écran 17 pouces de l'époque.
+// Largeur interne du bureau, en pixels : celle d'un écran 17 pouces de l'époque (1024 x 768).
 export const XP_WIDTH = 1024;
+// Hauteur interne du bureau, en pixels.
 export const XP_HEIGHT = 768;
+// Hauteur de la barre des tâches de Luna, en pixels.
 export const XP_TASKBAR = 30;
 // Rayon des coins de la dalle du CRT, en pixels du bureau : l'interface HTML s'arrondit pareil.
 export const XP_CORNER = 34;
 
+// Libellés du bureau XP, des fenêtres et des écrans d'allumage, en français et en anglais.
 export const XP_LABELS = {
   fr: {
     start: 'démarrer', myComputer: 'Poste de travail', myDocuments: 'Mes documents', recycleBin: 'Corbeille',
@@ -84,6 +87,9 @@ export function xpAsset(base: string, name: keyof typeof XP_FILES): string {
 export const SHORTCUT_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16">
 <rect x=".5" y=".5" width="15" height="15" fill="#fff" stroke="#7a7a7a"/><path d="M4 12c0-5 3-7 7-7V3l3 3.5L11 10V8c-3 0-5 1-7 4z" fill="#1d4fc4"/></svg>`;
 
+// ----------------------------------------------------------------------------
+// URL data: d'une image SVG écrite en ligne (flèche des raccourcis, icônes redessinées).
+// ----------------------------------------------------------------------------
 export function svgUrl(svg: string): string {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }

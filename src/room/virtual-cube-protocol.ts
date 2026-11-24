@@ -21,10 +21,9 @@ export type WorkerPause = { kind: 'pause'; paused: boolean };
 // Tous les messages de la page au worker.
 export type WorkerIn = WorkerInit | WorkerPause;
 
-// Messages du worker à la page : image des LED (RGB, ordre y, x, z), EEPROM modifiée,
-// état du firmware et signal de la LED d'état.
+// Messages du worker à la page : image des LED (RGB, ordre y, x, z), EEPROM modifiée et
+// signal de la LED d'état.
 export type WorkerOut =
   | { kind: 'frame'; rgb: Uint8Array }
   | { kind: 'eeprom'; bytes: Uint8Array }
-  | { kind: 'status'; running: boolean }
   | { kind: 'led'; signal: PhotonSignal };

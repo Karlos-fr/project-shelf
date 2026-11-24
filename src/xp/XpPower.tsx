@@ -33,10 +33,10 @@ const CURSOR_MS = 480;
 // Démarrage animé : BIOS vidéo, puis POST Award v4.51PG ligne par ligne (carte mère,
 // processeur, test mémoire qui compte, détection IDE avec attentes, erreurs disquette
 // et CMOS), bip du haut-parleur, curseur clignotant, et arrêt sur « Press F1 to
-// continue » : onReady est appelé à ce moment, la page attend alors F1 ou un clic.
+// continue » : la page attend alors F1 ou un clic.
 // startedAt est le début de la phase (performance.now()) : revenir à l'écran ne relance pas le POST.
 // ----------------------------------------------------------------------------
-export function AwardBios({ startedAt, onReady }: { startedAt: number; onReady?: () => void }) {
+export function AwardBios({ startedAt }: { startedAt: number }) {
   // Animé à chaque image jusqu'à l'arrêt sur « Press F1 », puis au rythme du curseur.
   const elapsed = useElapsed(startedAt, VGA_MS + POST_HALT_MS, CURSOR_MS / 2);
   const t = elapsed - VGA_MS;
@@ -63,7 +63,6 @@ export function AwardBios({ startedAt, onReady }: { startedAt: number; onReady?:
   const cmosAt = floppyAt + 450;
   const haltAt = POST_HALT_MS;
   const halted = t >= haltAt;
-  useEffect(() => { if (halted) onReady?.(); }, [halted]);
   const blink = Math.floor(elapsed / CURSOR_MS) % 2 === 0;
 
   if (t < 0) {

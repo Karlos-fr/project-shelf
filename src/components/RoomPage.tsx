@@ -2,9 +2,12 @@
 // RoomPage — Page autonome de la chambre 3D, à part de la vitrine
 // ----------------------------------------------------------------------------
 // Une chambre de la fin des années 90 : on clique pour passer d'un point de vue fixe
-// à l'autre (vue d'ensemble, bureau, étagère). L'étagère ne porte que les projets
-// sortis en boîte. Sans JavaScript ou sans WebGPU/WebGL, la page garde le titre et
-// la liste des liens vers les fiches complètes.
+// à l'autre (vue d'ensemble, bureau, écran du PC, étagère, cube, île LEGO, affiches), ou
+// on y va au clavier par le menu « Points de vue ». L'étagère ne porte que les projets
+// sortis en boîte ; l'écran du PC affiche un vrai bureau XP en HTML. La page orchestre la
+// scène (room-scene.ts), l'allumage du PC (room/pc-power.ts) et le garde-fou de
+// chargement. Sans JavaScript ou sans WebGPU, elle garde le titre et la liste des liens
+// vers les fiches complètes.
 // ============================================================================
 import { useEffect, useMemo, useRef, useState, type MouseEvent, type PointerEvent } from 'react';
 import type { SiteConfig } from '../config/site.ts';
@@ -214,22 +217,34 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   useEffect(() => { sceneRef.current?.setScreenOverlay(overlayOn); }, [overlayOn, sceneState]);
   useEffect(() => { sceneRef.current?.setZoom(zoomed); }, [zoomed, sceneState]);
 
+  // ----------------------------------------------------------------------------
+  // Va à une vue : la boîte zoomée et la boîte en avant sont relâchées, la caméra part.
+  // ----------------------------------------------------------------------------
   function goTo(next: RoomView): void {
     sceneRef.current?.setPointer(0, 0);
     setView(next);
     setZoomed(-1);
     setActive(-1);
   }
-  // Bouton de la tour ou menu Démarrer : la caméra se place face à l'écran pour voir la séquence.
+  // ----------------------------------------------------------------------------
+  // Bouton de la tour ou menu Démarrer : arrêt ou allumage du PC ; la caméra se place face
+  // à l'écran pour voir la séquence. Sans effet pendant une séquence déjà en cours.
+  // ----------------------------------------------------------------------------
   function togglePower(): void {
     if (pc === 'on') { setPc('shutdown'); setView('screen'); }
     else if (pc === 'off') { setPc('warmup'); setView('screen'); }
   }
-  // Premier clic sur une boîte : la caméra s'en approche ; re-clic ou clic à côté : elle recule.
+  // ----------------------------------------------------------------------------
+  // Approche (index ≥ 0) ou recul (-1) de la caméra sur une boîte de l'étagère : premier
+  // clic, la caméra s'en approche ; re-clic ou clic à côté, elle recule.
+  // ----------------------------------------------------------------------------
   function zoomTo(index: number): void {
     setZoomed(index);
     if (index >= 0) setActive(index);
   }
+  // ----------------------------------------------------------------------------
+  // Flèches de l'étagère : passe à la boîte voisine (direction -1 ou +1), zoomée ou non.
+  // ----------------------------------------------------------------------------
   function step(direction: number): void {
     if (items.length === 0) return;
     const from = zoomed >= 0 ? zoomed : active;
@@ -243,6 +258,10 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   function focusViewKey(target: RoomView): void {
     window.requestAnimationFrame(() => document.querySelector<HTMLElement>(`.room__keys [data-view="${target}"]`)?.focus());
   }
+  // ----------------------------------------------------------------------------
+  // Recule d'un cran : boîte zoomée, puis écran vers bureau, cube ou île vers étagère,
+  // puis toute vue vers la vue d'ensemble.
+  // ----------------------------------------------------------------------------
   function back(): void {
     if (zoomed >= 0) zoomTo(-1);
     else if (view === 'screen') goTo('desk');
@@ -255,6 +274,10 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
   // vues, le glissé oriente un peu le regard. Le clic qui termine un glissé est ignoré.
   const orbiting = view === 'cube' || view === 'lego';
   const lookingAround = view === 'overview';
+  // ----------------------------------------------------------------------------
+  // Début d'un glissé : orbite (cube, île), regard (vue d'ensemble, ou toute vue au doigt).
+  // Capture le pointeur jusqu'au relâchement.
+  // ----------------------------------------------------------------------------
   function handlePointerDown(event: PointerEvent<HTMLCanvasElement>): void {
     draggedRef.current = false;
     const touch = event.pointerType !== 'mouse';
@@ -263,12 +286,19 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     event.currentTarget.setPointerCapture(event.pointerId);
     if (orbiting || lookingAround) event.currentTarget.style.cursor = 'grabbing';
   }
+  // ----------------------------------------------------------------------------
+  // Fin d'un glissé : au-delà de 6 px parcourus, le clic qui suit est ignoré.
+  // ----------------------------------------------------------------------------
   function handlePointerUp(event: PointerEvent<HTMLCanvasElement>): void {
     if (dragRef.current === null) return;
     draggedRef.current = dragRef.current.moved > 6;
     dragRef.current = null;
     if (orbiting || lookingAround) event.currentTarget.style.cursor = 'grab';
   }
+  // ----------------------------------------------------------------------------
+  // Mouvement du pointeur : fait tourner la caméra pendant un glissé ; sinon, à la souris,
+  // incline la boîte zoomée et prévoit le test du survol pour l'image suivante.
+  // ----------------------------------------------------------------------------
   function handlePointerMove(event: PointerEvent<HTMLCanvasElement>): void {
     const scene = sceneRef.current;
     if (scene === null) return;
@@ -316,6 +346,9 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (onItem && zoomed < 0) setActive(hit.index);
   }
   hoverRunRef.current = runHover;
+  // ----------------------------------------------------------------------------
+  // Sortie du canvas : à la souris, survol abandonné et inclinaison remise à zéro.
+  // ----------------------------------------------------------------------------
   function handlePointerLeave(event: PointerEvent<HTMLCanvasElement>): void {
     // Au doigt, le regard reste où on l'a laissé ; la souris, elle, recentre la vue en sortant.
     if (event.pointerType !== 'mouse') return;
@@ -325,6 +358,10 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     sceneRef.current?.setPointer(0, 0);
     if (zoomed < 0) setActive(-1);
   }
+  // ----------------------------------------------------------------------------
+  // Clic dans la pièce : bouton de la tour, interrupteur, boîte de l'étagère, objet qui mène
+  // à une vue ; un clic dans le vide recule d'un cran.
+  // ----------------------------------------------------------------------------
   function handleClick(event: MouseEvent<HTMLCanvasElement>): void {
     const scene = sceneRef.current;
     if (scene === null) return;
@@ -338,6 +375,10 @@ export default function RoomPage({ config, summaries, xp: xpCatalog, locale }: R
     if (zoomed >= 0) zoomTo(-1);
     else if (view === 'screen' || hit.zone === null) back();
   }
+  // ----------------------------------------------------------------------------
+  // Clavier de la page (écouté sur la fenêtre) : touches de l'allumage du PC face à l'écran,
+  // Échap pour reculer, flèches pour l'orbite (cube, île) ou les boîtes de l'étagère.
+  // ----------------------------------------------------------------------------
   function handleKeyDown(event: globalThis.KeyboardEvent): void {
     // Face à l'écran pendant l'allumage : F1 fait repartir le BIOS, une autre touche passe au
     // bureau. Tab, Échap, les modificateurs seuls et les touches répétées gardent leur rôle.

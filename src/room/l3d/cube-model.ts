@@ -1,18 +1,18 @@
 // ============================================================================
-// CubeModel - Modele 3D du cube L3D 8x8x8 (Looking Glass), a l'identique
+// CubeModel - Modèle 3D du cube L3D 8x8x8 (Looking Glass), à l'identique
 // ----------------------------------------------------------------------------
-// Construit le cube a partir des plans officiels (case_data.json, genere par
-// scripts/cube-assets.mjs) et des photos du cube reel :
-// - quatre panneaux d'acrylique transparent de 2 mm assembles en moulinet par
-//   tenons a crochet, couvercle de 170,4 mm dans la rainure haute ;
-// - carte de base noire vissee sous les quatre cales d'angle de la rainure basse ;
-// - Particle Photon enfiche sous la carte, micro-USB face a la decoupe arriere ;
-// - 64 barrettes en circuit noir (serigraphie blanche D1 a D8, J1), enfichees
+// Construit le cube à partir des plans officiels (case_data.json, généré par
+// scripts/cube-assets.mjs) et des photos du cube réel :
+// - quatre panneaux d'acrylique transparent de 2 mm assemblés en moulinet par
+//   tenons à crochet, couvercle de 170,4 mm dans la rainure haute ;
+// - carte de base noire vissée sous les quatre cales d'angle de la rainure basse ;
+// - Particle Photon enfiché sous la carte, micro-USB face à la découpe arrière ;
+// - 64 barrettes en circuit noir (sérigraphie blanche D1 à D8, J1), enfichées
 //   dans des connecteurs femelles noirs, tenues en haut par 8 peignes de 4 mm ;
-// - 512 LED WS2812B 5050 tournees vers l'avant, dont la lentille s'allume ;
-// - gravures laser : logo L3D a l'avant, connectique et site a l'arriere.
-// Repere : metres, origine au centre du dessous du boitier, avant vers +z.
-// Ce fichier ne connait ni l'emulateur ni la boucle de rendu.
+// - 512 LED WS2812B 5050 tournées vers l'avant, dont la lentille s'allume ;
+// - gravures laser : logo L3D à l'avant, connectique et site à l'arrière.
+// Repère : mètres, origine au centre du dessous du boîtier, avant vers +z.
+// Ce fichier ne connaît ni l'émulateur ni la boucle de rendu.
 // ============================================================================
 
 import * as THREE from "three/webgpu";
@@ -24,17 +24,22 @@ import { buildPhoton, PHOTON_PCB, PHOTON_SPACER, type PhotonData } from "./photo
 type Point = [number, number];
 type Outline = { outline: Point[]; holes: Point[][] };
 
+// Un millimètre en mètres : les plans du cube sont en millimètres.
 const MM = 0.001;
+// Arête du cube, en LED.
 const N = 8;
-// Pas des LED (carte de base et peignes) et epaisseurs.
+// Pas entre deux LED voisines, sur la carte de base comme dans les peignes, en mm.
 const PITCH = 20;
+// Épaisseur des panneaux d'acrylique, en mm.
 const PANEL = 2;
+// Demi-largeur intérieure du boîtier entre les panneaux, en mm.
 const INNER = 85.2;
+// Épaisseur des circuits imprimés (barrettes, carte de base), en mm.
 const PCB = 1.0;
-// Hauteurs dans le panneau (mm depuis le bas), d'apres les rainures et les trous du DXF :
+// Hauteurs dans le panneau (mm depuis le bas), d'après les rainures et les trous du DXF :
 // les cales d'angle de 3 mm passent dans les rainures basse (34,7) et haute (217,7) ;
-// la carte de base est vissee dessous (ses composants du dessous tombent alors pile
-// dans les decoupes arriere : micro-USB du Photon, interrupteur, prise), le couvercle dessus.
+// la carte de base est vissée dessous (ses composants du dessous tombent alors pile
+// dans les découpes arrière : micro-USB du Photon, interrupteur, prise), le couvercle dessus.
 const GROOVE_LOW = 34.7;
 const GROOVE_HIGH = 217.7;
 const CORNER_T = 3;
@@ -49,12 +54,12 @@ const HEADER_H = 8.5;
 
 export type CubeModel = {
   group: THREE.Group;
-  // Couleurs des 512 LED en RGB 0 a 255, ordre (y, x, z), telles que le firmware les envoie.
+  // Couleurs des 512 LED en RGB 0 à 255, ordre (y, x, z), telles que le firmware les envoie.
   setLeds(rgb: Uint8Array): void;
-  // LED d'etat du Photon, composantes de 0 a 1.
+  // LED d'état du Photon, composantes de 0 à 1.
   setStatusLed(r: number, g: number, b: number): void;
-  // Ressources hors des proprietes des maillages (texture lue par un noeud, matrices
-  // d'instances), a liberer avec la scene.
+  // Ressources hors des propriétés des maillages (texture lue par un nœud, matrices
+  // d'instances), à libérer avec la scène.
   extras: { dispose(): void }[];
 };
 
@@ -78,10 +83,10 @@ function extrude(part: Outline, depth: number, bevel = 0): THREE.ExtrudeGeometry
 }
 
 // ----------------------------------------------------------------------------
-// Matieres photographiques. Le PMREM de la scene donne les reflets.
+// Matières photographiques. Le PMREM de la scène donne les reflets.
 // ----------------------------------------------------------------------------
 function materials() {
-  // Acrylique coule : faces presque invisibles hors reflets, chants plus denses et legerement verts.
+  // Acrylique coule : faces presque invisibles hors reflets, chants plus denses et légèrement verts.
   const acrylicFace = new THREE.MeshPhysicalMaterial({
     color: 0xf4fbfa, metalness: 0, roughness: 0.02, ior: 1.49, specularIntensity: 1, clearcoat: 1, clearcoatRoughness: 0.02,
     transparent: true, opacity: 0.02, depthWrite: false, side: THREE.FrontSide, envMapIntensity: 0.7,
@@ -90,32 +95,32 @@ function materials() {
     color: 0xcfeee6, metalness: 0, roughness: 0.12, ior: 1.49, clearcoat: 1, transparent: true, opacity: 0.4, depthWrite: false,
   });
   const acrylic = [acrylicFace, acrylicEdge];
-  // Vernis epargne noir des circuits : satine, avec un leger vernis.
+  // Vernis épargne noir des circuits : satiné, avec un léger vernis.
   const solder = new THREE.MeshPhysicalMaterial({ color: 0x0b0b0c, roughness: 0.45, clearcoat: 0.3, clearcoatRoughness: 0.35, envMapIntensity: 0.6 });
   const fr4 = new THREE.MeshStandardMaterial({ color: 0x24221d, roughness: 0.7 });
   const plastic = new THREE.MeshStandardMaterial({ color: 0x0e0e0f, roughness: 0.55 });
   const gold = new THREE.MeshStandardMaterial({ color: 0xd8b25a, metalness: 1, roughness: 0.28 });
   const steel = new THREE.MeshStandardMaterial({ color: 0xc8cacc, metalness: 1, roughness: 0.32 });
   const recess = new THREE.MeshStandardMaterial({ color: 0x2c2d2f, metalness: 1, roughness: 0.6 });
-  return { acrylic, acrylicFace, acrylicEdge, solder, fr4, plastic, gold, steel, recess };
+  return { acrylic, solder, fr4, plastic, gold, steel, recess };
 }
 
 // ----------------------------------------------------------------------------
-// Vis M3 x 6 a tete cylindrique bombee et empreinte cruciforme (ISO 7045) :
-// tete de 5,5 mm sur 2,1 mm, tige filetee de 3 mm au pas de 0,5 mm sur 6 mm.
-// Origine : face d'appui sous la tete ; la tige descend vers -y.
+// Vis M3 x 6 à tête cylindrique bombée et empreinte cruciforme (ISO 7045) :
+// tête de 5,5 mm sur 2,1 mm, tige filetée de 3 mm au pas de 0,5 mm sur 6 mm.
+// Origine : face d'appui sous la tête ; la tige descend vers -y.
 // ----------------------------------------------------------------------------
 function m3Screw(steel: THREE.Material, recess: THREE.Material): THREE.Group {
   const screw = new THREE.Group();
   const p = (r: number, y: number) => new THREE.Vector2(r * MM, y * MM);
   const head = [p(0, 2.1), p(1.2, 2.08), p(2.1, 1.85), p(2.6, 1.3), p(2.75, 0.6), p(2.75, 0), p(1.5, 0)];
   screw.add(new THREE.Mesh(new THREE.LatheGeometry(head, 32), steel));
-  // Filet : dents de 0,5 mm entre le diametre exterieur (3) et le noyau (2,4).
+  // Filet : dents de 0,5 mm entre le diamètre extérieur (3) et le noyau (2,4).
   const thread = [p(0, -6), p(1.2, -6)];
   for (let y = -5.75; y < 0; y += 0.5) thread.push(p(1.5, y), p(1.2, y + 0.25));
   thread.push(p(1.2, 0), p(0, 0));
   screw.add(new THREE.Mesh(new THREE.LatheGeometry(thread, 20), steel));
-  // Empreinte cruciforme sombre, legerement enfoncee dans le dome.
+  // Empreinte cruciforme sombre, légèrement enfoncée dans le dôme.
   for (const angle of [0, Math.PI / 2]) {
     const arm = new THREE.Mesh(new THREE.BoxGeometry(2.9 * MM, 0.5 * MM, 0.7 * MM), recess);
     arm.position.y = 1.9 * MM;
@@ -126,15 +131,15 @@ function m3Screw(steel: THREE.Material, recess: THREE.Material): THREE.Group {
 }
 
 // ----------------------------------------------------------------------------
-// Construit le cube complet, LED eteintes.
+// Construit le cube complet, LED éteintes.
 // ----------------------------------------------------------------------------
 export function buildCube(): CubeModel {
   const group = new THREE.Group();
   const m = materials();
   const panels = data.panels as unknown as Record<"front" | "back" | "left" | "right", Outline & { engraving: Point[][] }>;
 
-  // ------------------------------------------------------------ boitier
-  // Avant (+z), droite (+x), arriere, gauche : chaque panneau tourne de 90 degres.
+  // ------------------------------------------------------------ boîtier
+  // Avant (+z), droite (+x), arrière, gauche : chaque panneau tourne de 90 degrés.
   const order = [panels.front, panels.right, panels.back, panels.left];
   order.forEach((panel, k) => {
     const holder = new THREE.Group();
@@ -143,7 +148,7 @@ export function buildCube(): CubeModel {
     mesh.position.z = INNER * MM;
     holder.add(mesh);
     if (panel.engraving.length > 0) {
-      // Gravure sur la face interieure, lue a l'endroit depuis l'exterieur.
+      // Gravure sur la face intérieure, lue à l'endroit depuis l'extérieur.
       const { map, box } = engravingTexture(panel.engraving);
       const decal = new THREE.Mesh(
         new THREE.PlaneGeometry((box.x1 - box.x0) * MM, (box.y1 - box.y0) * MM),
@@ -166,14 +171,14 @@ export function buildCube(): CubeModel {
   board.position.y = (BOARD_Y + BOARD_T / 2) * MM;
   group.add(board);
   // Cales d'angle (corner.DXF) : huit, dans les rainures des deux panneaux voisins, l'angle
-  // arrondi depasse a l'exterieur. Leur trou tombe sur ceux du couvercle (81 mm du centre).
+  // arrondi dépasse à l'extérieur. Leur trou tombe sur ceux du couvercle (81 mm du centre).
   const corner = data.corner as unknown as Outline;
   const hole = corner.holes[0] ?? [[0, 0]];
   const hx = (Math.min(...hole.map((p) => p[0])) + Math.max(...hole.map((p) => p[0]))) / 2;
   const hy = (Math.min(...hole.map((p) => p[1])) + Math.max(...hole.map((p) => p[1]))) / 2;
   const cornerGeometry = extrude(corner, CORNER_T, 0.0002);
   cornerGeometry.translate(-hx * MM, -hy * MM, 0);
-  // Repere du trace : +x et -y vont vers l'exterieur du coin ; l'epaisseur monte.
+  // Repère du trace : +x et -y vont vers l'extérieur du coin ; l'épaisseur monte.
   cornerGeometry.rotateX(-Math.PI / 2);
   const screw = m3Screw(m.steel, m.recess);
   const lidTop = (LID_Y + PANEL) * MM;
@@ -185,7 +190,7 @@ export function buildCube(): CubeModel {
       const block = new THREE.Mesh(cornerGeometry, m.acrylic);
       block.position.set(81 * MM, y, 81 * MM);
       holder.add(block);
-      // Vis M3 x 6 : la tete porte sous la carte ou sur le couvercle, la tige traverse la cale.
+      // Vis M3 x 6 : la tête porte sous la carte ou sur le couvercle, la tige traverse la cale.
       const fixing = screw.clone();
       fixing.position.set(81 * MM, screwY, 81 * MM);
       fixing.rotation.set(below ? Math.PI : 0, k * 0.7 + (below ? 0 : 0.3), 0);
@@ -193,20 +198,21 @@ export function buildCube(): CubeModel {
     }
     group.add(holder);
   }
-  // Connectique sous la carte, face aux decoupes du panneau arriere.
-  const parts: [number, number, number, number, number, number, THREE.Material][] = [
-    [51.2, 27.7, 12, 11, 15, 0, m.steel],
-    [0, 30.4, 8, 3, 4, 0, m.plastic],
+  // Connectique sous la carte, face aux découpes du panneau arrière.
+  // Centre (x, y) sous la carte, largeur, hauteur et profondeur en mm, matière.
+  const parts: [number, number, number, number, number, THREE.Material][] = [
+    [51.2, 27.7, 12, 11, 15, m.steel],
+    [0, 30.4, 8, 3, 4, m.plastic],
   ];
-  for (const [x, y, w, h, d, , material] of parts) {
+  for (const [x, y, w, h, d, material] of parts) {
     const part = new THREE.Mesh(new THREE.BoxGeometry(w * MM, h * MM, d * MM), material);
     part.position.set(x * MM, y * MM, -(INNER - d / 2) * MM);
     group.add(part);
   }
 
   // ------------------------------------------------------------ Photon
-  // Enfiche a l'envers sous la carte dans deux barrettes femelles de 8,5 mm (JP1, JP2 du
-  // fichier de la carte de base) : VIN contre le bord arriere, micro-USB dans sa decoupe.
+  // Enfiché à l'envers sous la carte dans deux barrettes femelles de 8,5 mm (JP1, JP2 du
+  // fichier de la carte de base) : VIN contre le bord arrière, micro-USB dans sa découpe.
   const photonData = data.photon as unknown as PhotonData & { socket: { pin1: Point; rowSpacing: number; board: number } };
   const photon = buildPhoton(photonData);
   const socket = photonData.socket;
@@ -214,8 +220,8 @@ export function buildCube(): CubeModel {
   const vinY = Math.max(...photonData.pins.filter((q) => q[0] === leftRow).map((q) => q[1]));
   const femaleH = 8.5;
   const faceY = BOARD_Y - femaleH - PHOTON_SPACER - PHOTON_PCB;
-  // Carte de base tournee de 180 degres dans le boitier : x = 85 - x carte, z = y carte - 85.
-  // Retourne (rotation de 180 degres autour de z), le Photon montre ses composants vers le bas.
+  // Carte de base tournée de 180 degrés dans le boîtier : x = 85 - x carte, z = y carte - 85.
+  // Retourné (rotation de 180 degrés autour de z), le Photon montre ses composants vers le bas.
   photon.group.rotation.z = Math.PI;
   photon.group.position.set((socket.board / 2 - socket.pin1[0] + leftRow) * MM, faceY * MM, (socket.pin1[1] + vinY - socket.board / 2) * MM);
   group.add(photon.group);
@@ -230,9 +236,9 @@ export function buildCube(): CubeModel {
   const stickBottom = STICK_TOP - stick.length;
   const stickGeometry = new THREE.ExtrudeGeometry(shapeOf(stick.outline), { depth: PCB * MM, bevelEnabled: false, curveSegments: 4 });
   const silk = stickSilkscreen(stick.length, stick.leds, stick.header);
-  // Les UV de l'extrusion sont en metres : la serigraphie est calee en mm.
+  // Les UV de l'extrusion sont en mètres : la sérigraphie est calée en mm.
+  // (le décalage de 0,5 en u est déjà pose par stickSilkscreen).
   silk.repeat.multiplyScalar(1 / MM);
-  silk.offset.set(0.5, 0);
   const stickFace = new THREE.MeshPhysicalMaterial({ map: silk, roughness: 0.45, clearcoat: 0.3, clearcoatRoughness: 0.35, envMapIntensity: 0.6 });
   const sticks = new THREE.InstancedMesh(stickGeometry, [stickFace, m.fr4], N * N);
   const headers = new THREE.InstancedMesh(new THREE.BoxGeometry(5.1 * MM, HEADER_H * MM, 5.1 * MM), m.plastic, N * N);
@@ -244,7 +250,7 @@ export function buildCube(): CubeModel {
     for (let iz = 0; iz < N; iz += 1) {
       const x = grid(ix);
       const z = grid(iz);
-      // Face avant du circuit 0,8 mm derriere le centre des LED.
+      // Face avant du circuit 0,8 mm derrière le centre des LED.
       matrix.makeTranslation(x, stickBottom * MM, z - (0.8 + PCB) * MM);
       sticks.setMatrixAt(s, matrix);
       matrix.makeTranslation(x, boardTop + (HEADER_H / 2) * MM, z - 1.3 * MM);
@@ -259,7 +265,7 @@ export function buildCube(): CubeModel {
   }
   group.add(sticks, headers, pins);
 
-  // Peignes de 4 mm : un par rangee de profondeur, fentes de 6 x 1,2 mm, languettes dans les flancs.
+  // Peignes de 4 mm : un par rangée de profondeur, fentes de 6 x 1,2 mm, languettes dans les flancs.
   const half = INNER + PANEL + 0.6;
   const comb = new THREE.Shape([
     [-INNER, -2.4], [-INNER, -1.5], [-half, -1.5], [-half, 1.5], [-INNER, 1.5], [-INNER, 2.4],
@@ -283,8 +289,8 @@ export function buildCube(): CubeModel {
   const ledColour = instancedDynamicBufferAttribute(colours, "vec3") as unknown as THREE.Node<"vec3">;
   const face = ledFaceTextures();
   const top = new THREE.MeshPhysicalNodeMaterial({ map: face.map, roughness: 0.18, clearcoat: 1, clearcoatRoughness: 0.05 });
-  // La lentille rayonne la couleur ; un halo plus large traverse le boitier blanc.
-  // Allumee, une WS2812 eclaire toute sa face : la lentille brule, le boitier blanc diffuse autour.
+  // La lentille rayonne la couleur ; un halo plus large traverse le boîtier blanc.
+  // Allumée, une WS2812 éclaire toute sa face : la lentille brûle, le boîtier blanc diffuse autour.
   top.emissiveNode = ledColour.mul(texture(face.glow).r.pow(float(1.2)).mul(0.75).add(0.25)).mul(16);
   const body = new THREE.MeshPhysicalNodeMaterial({ color: 0xf2efe8, roughness: 0.5 });
   body.emissiveNode = ledColour.mul(1.6);
@@ -304,13 +310,13 @@ export function buildCube(): CubeModel {
   }
   group.add(leds);
 
-  // Spheres englobantes calculees sur les instances : le cube hors champ n'est pas dessine.
+  // Sphères englobantes calculées sur les instances : le cube hors champ n'est pas dessine.
   for (const mesh of [sticks, headers, pins, leds]) mesh.computeBoundingSphere();
   group.traverse((object) => {
     if (object instanceof THREE.Mesh) { object.castShadow = true; object.receiveShadow = true; }
   });
 
-  // Une WS2812 parait vive des les faibles rapports cycliques : courbe gamma douce.
+  // Une WS2812 paraît vive des les faibles rapports cycliques : courbe gamma douce.
   const level = new Float32Array(256).map((_, v) => (v / 255) ** 0.6);
   return {
     group,

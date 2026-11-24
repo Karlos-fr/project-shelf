@@ -30,8 +30,6 @@ export type PcScreen = 'desktop' | 'black' | 'bios' | 'boot' | 'welcome' | 'shut
 
 export type PcModel = {
   group: THREE.Group;
-  monitor: THREE.Group;
-  tower: THREE.Group;
   // Dalle de l'écran : ses quatre coins en coordonnées monde (haut gauche, haut droit, bas droit, bas gauche).
   screenCorners(): THREE.Vector3[];
   screenCenter(): THREE.Vector3;
@@ -64,6 +62,7 @@ export const SCREEN_RADIUS = XP_CORNER / XP_WIDTH * SCREEN_W;
 export async function buildPc(env: PcEnv): Promise<PcModel> {
   const { keep, maxAniso, smudgeTex } = env;
   const group = new THREE.Group();
+  // Pose un maillage sous parent en (x, y, z), ombres portées et reçues ; géométrie enregistrée.
   const add = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material | THREE.Material[], x: number, y: number, z: number): THREE.Mesh => {
     const mesh = new THREE.Mesh(keep(geometry), material);
     mesh.position.set(x, y, z);
@@ -106,6 +105,7 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   const housingDepth = 0.4;
   const housingW = bezelW - 0.006;
   const housingH = bezelH - 0.006;
+  // Profil de la coque à zRel mètres derrière le collier : échelle de la section et descente du dessus.
   const taper = (zRel: number) => {
     const t = Math.min(1, Math.max(0, (zRel - 0.06) / 0.34));
     return { scale: 1 - 0.4 * t ** 1.3, drop: 0.022 * t };
@@ -237,6 +237,7 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   add(tower, new THREE.BoxGeometry(0.088, 0.0045, 0.003), black, -0.004, 0.258, tf + 0.0135);
   add(tower, new RoundedBoxGeometry(0.012, 0.006, 0.004, 2, 0.0015), plastic, 0.036, 0.249, tf + 0.0135);
   // Voyants alimentation (vert) et disque dur (orange).
+  // Voyant de façade en x : petite sphère émissive ; retour : son matériau, que l'état allume.
   const led = (hex: number, emissive: number, x: number) => {
     const material = keep(new THREE.MeshStandardMaterial({ color: hex, emissive, emissiveIntensity: 2.5 }));
     add(tower, new THREE.SphereGeometry(0.0026, 12, 8), material, x, 0.17, tf + 0.011);
@@ -278,6 +279,7 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   add(mouse, new THREE.BoxGeometry(0.06, 0.004, 0.0012), grey, 0, 0.012, -0.012);
   // Câbles : souris et clavier vers la tour, moniteur vers la tour.
   const cable = keep(new THREE.MeshStandardMaterial({ color: 0x9c9585, roughness: 0.6 }));
+  // Câble souple passant par points (repère du bureau).
   const tube = (points: [number, number, number][]) => {
     const curve = new THREE.CatmullRomCurve3(points.map(([x, y, z]) => new THREE.Vector3(x, y, z)));
     add(group, new THREE.TubeGeometry(curve, 80, 0.0028, 8, false), cable, 0, 0, 0);
@@ -291,7 +293,7 @@ export async function buildPc(env: PcEnv): Promise<PcModel> {
   let overlay = false;
   const powerRestZ = power.position.z;
   return {
-    group, monitor, tower,
+    group,
     setReflection(environment, sceneLights) {
       glass.envMap = environment;
       // La lueur que l'écran projette sur la pièce, posée juste devant lui, ne se reflète pas dans sa propre vitre.
@@ -431,6 +433,7 @@ function keyboardCanvas(): HTMLCanvasElement {
   context.fillStyle = '#b8ae94';
   context.fillRect(0, 0, width, height);
   const unit = 41;
+  // Touche en (x, y) de largeur w unités, avec sa légende ; dark pour les modificateurs.
   const keyCap = (x: number, y: number, w: number, label: string, dark = false) => {
     const kx = 16 + x * unit; const ky = 18 + y * unit; const kw = w * unit - 4; const kh = unit - 4;
     const gradient = context.createLinearGradient(0, ky, 0, ky + kh);
@@ -445,6 +448,7 @@ function keyboardCanvas(): HTMLCanvasElement {
     context.textAlign = 'left';
     context.fillText(label, kx + 7, ky + 18);
   };
+  // Rangée de touches à la hauteur y, depuis start : légende seule ou [légende, largeur, foncée].
   const row = (y: number, keys: (string | [string, number, boolean?])[], start = 0) => {
     let x = start;
     for (const key of keys) {
@@ -480,7 +484,9 @@ function keyboardCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
+// ----------------------------------------------------------------------------
 // Rectangle arrondi centré en (cx, cy), utilisable comme forme ou comme trou.
+// ----------------------------------------------------------------------------
 function roundedRect(width: number, height: number, radius: number, cx: number, cy: number): THREE.Shape {
   const x0 = cx - width / 2; const x1 = cx + width / 2; const y0 = cy - height / 2; const y1 = cy + height / 2;
   const shape = new THREE.Shape();
@@ -516,8 +522,10 @@ function brandCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
+// ----------------------------------------------------------------------------
 // Contour d'un rectangle arrondi centré, en points 2D : quatre arcs de n segments,
 // toujours parcourus dans le même ordre pour pouvoir relier deux contours entre eux.
+// ----------------------------------------------------------------------------
 function roundedRectPoints(width: number, height: number, radius: number, n: number): THREE.Vector2[] {
   const points: THREE.Vector2[] = [];
   const corners: [number, number, number][] = [
@@ -535,7 +543,9 @@ function roundedRectPoints(width: number, height: number, radius: number, n: num
   return points;
 }
 
+// ----------------------------------------------------------------------------
 // Surface réglée entre deux contours de même nombre de points, aux profondeurs z0 et z1.
+// ----------------------------------------------------------------------------
 function loft(outer: THREE.Vector2[], z0: number, inner: THREE.Vector2[], z1: number): THREE.BufferGeometry {
   const positions: number[] = [];
   for (let i = 0; i < outer.length; i += 1) {

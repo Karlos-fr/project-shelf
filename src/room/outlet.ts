@@ -11,6 +11,10 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 
 export type Outlet = { group: THREE.Group; cableStart: THREE.Vector3 };
 
+// ----------------------------------------------------------------------------
+// Construit la prise et sa fiche. keep enregistre ce qu'il faudra libérer.
+// Retour : le groupe et cableStart, sortie du câble dans le repère de la prise.
+// ----------------------------------------------------------------------------
 export function buildOutlet(keep: <V extends { dispose(): void }>(value: V) => V): Outlet {
   const group = new THREE.Group();
   const add = (geometry: THREE.BufferGeometry, material: THREE.Material, x: number, y: number, z: number): THREE.Mesh => {

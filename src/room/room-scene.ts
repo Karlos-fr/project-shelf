@@ -9,11 +9,14 @@
 // DOM hors du canvas fourni.
 // ============================================================================
 import * as THREE from 'three/webgpu';
-import { texture, uv } from 'three/tsl';
 import { HDRLoader } from 'three/addons/loaders/HDRLoader.js';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { RectAreaLightTexturesLib } from 'three/addons/lights/RectAreaLightTexturesLib.js';
-import { softPointShadow } from './soft-point-shadow.ts';
+import { addRoomLights } from './room-lights.ts';
+import { buildRoomShell } from './room-shell.ts';
+import { buildDesk } from './desk.ts';
+import { buildChair } from './chair.ts';
+import { BACK, DESK, RX } from './room-layout.ts';
+import { meshAdder } from './room-mesh.ts';
 import { buildPc, SCREEN_H, SCREEN_W, type PcEnv, type PcPower, type PcScreen } from './pc-model.ts';
 import { BAYWATCH_POSTER, buildPoster, X_FILES_POSTER } from './poster.ts';
 import { buildMagazineStack } from './magazines.ts';
@@ -21,12 +24,11 @@ import { buildL3dCube, POWER_JACK } from './l3d-cube.ts';
 import { startVirtualCube } from './virtual-cube.ts';
 import { buildLegoMoc } from './lego-moc.ts';
 import { buildOutlet } from './outlet.ts';
-import { buildDoor, buildLightSwitch, DOOR_W } from './door.ts';
 import { buildShelfModel, type ShelfSceneItem } from '../shelf/shelf-model.ts';
 import { pixelRatioFor } from './render-quality.ts';
 import { mergeStatic } from './merge-static.ts';
 import { buildPineRack, RACK_DEPTH, RACK_LEVELS, RACK_WIDTH } from './pine-rack.ts';
-import { blotchTexture, canvas2d, loadPbrSet, printNormal, seeded, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
+import { blotchTexture, loadPbrSet, woodNodeMaterial, type PbrSet, type WoodOptions } from '../shelf/shelf-materials.ts';
 
 export type RoomView = 'overview' | 'desk' | 'shelf' | 'screen' | 'poster' | 'baywatch' | 'cube' | 'lego';
 // Zone cliquable : un meuble qui mène à une vue.
@@ -92,25 +94,12 @@ export type RoomScene = {
   dispose(): void;
 };
 
-// --------------------------------------------------------------- plan de la pièce (mètres)
-// Murs intérieurs : x de -RX à +RX, z de BACK à FRONT, plafond à RH.
-const RX = 1.9;
-const BACK = -1.6;
-const FRONT = 1.8;
-const RH = 2.5;
-const WALL = 0.15;
-// Fenêtre du mur du fond.
-const WIN = { x: 1.05, w: 0.95, y0: 0.95, y1: 2.2 };
-// Teinte du hêtre clair (placage de frêne Poly Haven réchauffé), commune aux trois meubles.
-const BEECH = { tint: 0xf7dcc0, brightness: 1.25, normalScale: 0.9 } as const;
-// Bureau en hêtre contre le mur du fond.
-const DESK = { x: -0.15, z: BACK + 0.38, w: 1.4, d: 0.7, h: 0.74 };
+// --------------------------------------------------------------- points de vue (mètres)
+// Le plan de la pièce (murs, fenêtre, porte, bureau) est dans room-layout.ts.
 // Affiche collée à la pâte à fixe au mur du fond, au-dessus du bureau.
 const POSTER = { x: -0.32, y: 1.64 };
 // Affiche d'Alerte à Malibu au mur de gauche, entre l'étagère et le mur d'entrée.
 const BAYWATCH = { y: 1.5, z: 0.52 };
-// Porte de la chambre, au milieu de la moitié gauche du mur d'entrée (z = FRONT).
-const DOOR = { x: -0.95 };
 // Point de vue au milieu de la pièce, d'où l'on voit la porte en se retournant.
 const ROOM_EYE = new THREE.Vector3(0.4, 1.5, 0.1);
 // Étagère en pin posée au sol contre le mur de gauche : les boîtes sont au 4e niveau, à hauteur des yeux.
@@ -197,185 +186,34 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   for (const load of [magazinesLoad, posterLoad, baywatchLoad, pcLoad, modelLoad]) load.catch(() => undefined);
 
   // --------------------------------------------------------------- lumière
-  // Le HDRI d'un vrai salon (Poly Haven, CC0) donne reflets et lumière ambiante, atténués :
-  // la pièce est close, l'essentiel du jour entre par la fenêtre.
-  hdr.mapping = THREE.EquirectangularReflectionMapping;
-  scene.environment = hdr;
-  scene.environmentIntensity = 0.3;
-  scene.environmentRotation = new THREE.Euler(0, 2.2, 0);
-  // Soleil de fin d'après-midi par la fenêtre : les murs portent ombre, seule l'ouverture laisse passer.
-  const sun = new THREE.DirectionalLight(0xffeedd, 7);
-  // Le faisceau traverse la fenêtre et tombe sur le parquet entre le bureau et l'étagère.
-  sun.target.position.set(-0.45, 0, -0.35);
-  sun.position.copy(sun.target.position).add(new THREE.Vector3(1.5, 1.575, -1.25).multiplyScalar(3));
-  sun.castShadow = true;
-  sun.shadow.mapSize.setScalar(2048);
-  sun.shadow.bias = -0.0003;
-  sun.shadow.normalBias = 0.02;
-  // Ombre VSM : bord flouté une fois pour toutes dans la carte, sans le bruit par pixel du PCF.
-  sun.shadow.radius = 3;
-  sun.shadow.blurSamples = 8;
-  // La pièce est immobile : la carte d'ombre (2048²) n'est recalculée que quand une boîte bouge.
-  sun.shadow.autoUpdate = false;
-  sun.shadow.needsUpdate = true;
-  Object.assign(sun.shadow.camera, { left: -3.8, right: 3.8, top: 3.8, bottom: -3.8, near: 0.5, far: 12 });
-  scene.add(sun, sun.target);
-  // Ciel vu par la fenêtre : une lumière surfacique douce et froide, sans ombre.
-  const skyLight = new THREE.RectAreaLight(0xdce8ff, 5, WIN.w, WIN.y1 - WIN.y0);
-  skyLight.position.set(WIN.x, (WIN.y0 + WIN.y1) / 2, BACK - 0.02);
-  skyLight.lookAt(WIN.x, (WIN.y0 + WIN.y1) / 2, 0);
-  scene.add(skyLight);
-  // Ambiance : ciel neutre en haut, rebond clair du parquet en bas ; ce rebond éclaire
-  // aussi le plafond, qui sinon paraissait presque noir.
-  scene.add(new THREE.HemisphereLight(0xeef1f5, 0xb3a897, 0.8));
-  // Ampoule nue au bout de son fil, au milieu du plafond : ombres nettes au bord légèrement
-  // dégradé, sans bruit (soft-point-shadow.ts), recalculées seulement quand une boîte bouge.
-  const BULB = new THREE.Vector3(0, RH - 0.55, (BACK + FRONT) / 2);
-  const bulbLight = new THREE.PointLight(0xffd9a8, 6, 0, 2);
-  bulbLight.position.copy(BULB);
-  bulbLight.castShadow = true;
-  bulbLight.shadow.mapSize.setScalar(2048);
-  (bulbLight.shadow as unknown as { filterNode: unknown }).filterNode = softPointShadow(1);
-  bulbLight.shadow.bias = -0.002;
-  bulbLight.shadow.normalBias = 0;
-  Object.assign(bulbLight.shadow.camera, { near: 0.08, far: 6 });
-  bulbLight.shadow.autoUpdate = false;
-  bulbLight.shadow.needsUpdate = true;
-  scene.add(bulbLight);
+  // Jour par la fenêtre, ciel, ambiance et ampoule du plafond (room-lights.ts).
+  const { sun, bulbLight } = addRoomLights(scene, hdr);
 
   // --------------------------------------------------------------- pièce
-  const add = (parent: THREE.Object3D, geometry: THREE.BufferGeometry, material: THREE.Material | THREE.Material[], x: number, y: number, z: number, shadows = true): THREE.Mesh => {
-    const mesh = new THREE.Mesh(keep(geometry), material);
-    mesh.position.set(x, y, z);
-    mesh.castShadow = mesh.receiveShadow = shadows;
-    parent.add(mesh);
-    return mesh;
-  };
-  const room = new THREE.Group();
+  const add = meshAdder(keep);
+  // Murs, sol, plafond, porte, interrupteur, fenêtre et suspension (room-shell.ts).
+  const { room, lightSwitch, bulbGlass } = buildRoomShell(keep, pbr, oak, plaster);
   scene.add(room);
-  // Parquet en chêne verni, lames de 1,2 m de motif.
-  const floorW = 2 * RX + 2 * WALL;
-  const floorD = FRONT - BACK + 2 * WALL;
-  const floor = add(room, new THREE.BoxGeometry(floorW, 0.04, floorD), pbr(oak, { ru: floorW / 1.2, rv: floorD / 1.2, coat: 0.35, coatRoughness: 0.25, tint: 0xf2ece4, brightness: 1.0, dust: 0.04, normalScale: 1.4 }), 0, -0.02, (BACK + FRONT) / 2);
-  floor.castShadow = false;
-  // Murs en plâtre peint crème : chaque pan est une boîte épaisse qui arrête le soleil.
-  const paint = (w: number, h: number) => pbr(plaster, { ru: w / 3, rv: h / 3, coat: 0, tint: 0xf1f1ee, brightness: 1.5, dust: 0, normalScale: 0.8 });
-  const wallBox = (x0: number, x1: number, y0: number, y1: number, z0: number, z1: number) => {
-    const w = x1 - x0; const h = y1 - y0; const d = z1 - z0;
-    return add(room, new THREE.BoxGeometry(w, h, d), paint(Math.max(w, d), h), (x0 + x1) / 2, (y0 + y1) / 2, (z0 + z1) / 2);
-  };
-  const bz0 = BACK - WALL;
-  wallBox(-RX - WALL, WIN.x - WIN.w / 2, 0, RH, bz0, BACK);
-  wallBox(WIN.x + WIN.w / 2, RX + WALL, 0, RH, bz0, BACK);
-  wallBox(WIN.x - WIN.w / 2, WIN.x + WIN.w / 2, 0, WIN.y0, bz0, BACK);
-  wallBox(WIN.x - WIN.w / 2, WIN.x + WIN.w / 2, WIN.y1, RH, bz0, BACK);
-  wallBox(-RX - WALL, -RX, 0, RH, bz0, FRONT + WALL);
-  wallBox(RX, RX + WALL, 0, RH, bz0, FRONT + WALL);
-  wallBox(-RX, RX, 0, RH, FRONT, FRONT + WALL);
-  // Plafond peint en blanc, plus clair que les murs.
-  const ceiling = wallBox(-RX - WALL, RX + WALL, RH, RH + 0.12, bz0, FRONT + WALL);
-  ceiling.material = pbr(plaster, { ru: 1.4, rv: 1.2, coat: 0, tint: 0xffffff, brightness: 1.75, dust: 0, normalScale: 0.5 });
-  // Plinthes peintes en blanc cassé.
-  const trimPaint = keep(new THREE.MeshPhysicalMaterial({ color: 0xece6da, roughness: 0.42, clearcoat: 0.3, clearcoatRoughness: 0.4 }));
-  const skirting = (w: number, d: number, x: number, z: number) => add(room, new RoundedBoxGeometry(w, 0.08, d, 2, 0.004), trimPaint, x, 0.04, z);
-  skirting(WIN.x - WIN.w / 2 + RX, 0.016, (WIN.x - WIN.w / 2 - RX) / 2, BACK + 0.008);
-  skirting(RX - WIN.x - WIN.w / 2, 0.016, (RX + WIN.x + WIN.w / 2) / 2, BACK + 0.008);
-  skirting(WIN.w, 0.016, WIN.x, BACK + 0.008);
-  skirting(0.016, FRONT - BACK, -RX + 0.008, (BACK + FRONT) / 2);
-  skirting(0.016, FRONT - BACK, RX - 0.008, (BACK + FRONT) / 2);
-  // Mur d'entrée, derrière la vue d'ensemble : porte blanche et interrupteur côté poignée.
-  const doorLeft = DOOR.x - DOOR_W / 2 - 0.07;
-  const doorRight = DOOR.x + DOOR_W / 2 + 0.07;
-  skirting(doorLeft + RX, 0.016, (doorLeft - RX) / 2, FRONT - 0.008);
-  skirting(RX - doorRight, 0.016, (RX + doorRight) / 2, FRONT - 0.008);
-  const door = buildDoor(keep);
-  door.position.set(DOOR.x, 0, FRONT);
-  door.rotation.y = Math.PI;
-  room.add(door);
-  const lightSwitch = buildLightSwitch(keep);
-  lightSwitch.group.position.set(doorRight + 0.12, 1.1, FRONT);
-  lightSwitch.group.rotation.y = Math.PI;
-  lightSwitch.setOn(true);
-  room.add(lightSwitch.group);
-
-  // --------------------------------------------------------------- fenêtre
-  // Croisée à deux battants et petits bois, en retrait dans l'embrasure.
-  const frameZ = BACK - WALL + 0.05;
-  const winH = WIN.y1 - WIN.y0;
-  const winY = (WIN.y0 + WIN.y1) / 2;
-  const bar = (w: number, h: number, x: number, y: number, depth = 0.05) => add(room, new RoundedBoxGeometry(w, h, depth, 2, 0.006), trimPaint, x, y, frameZ);
-  bar(WIN.w, 0.06, WIN.x, WIN.y1 - 0.03);
-  bar(WIN.w, 0.06, WIN.x, WIN.y0 + 0.03);
-  bar(0.06, winH, WIN.x - WIN.w / 2 + 0.03, winY);
-  bar(0.06, winH, WIN.x + WIN.w / 2 - 0.03, winY);
-  bar(0.07, winH - 0.1, WIN.x, winY, 0.055);
-  for (const side of [-1, 1]) {
-    const cx = WIN.x + side * WIN.w / 4;
-    for (const k of [1, 2]) bar(WIN.w / 2 - 0.09, 0.025, cx, WIN.y0 + 0.06 + k * (winH - 0.12) / 3, 0.03);
-  }
-  const glass = keep(new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: 0.04, metalness: 0, transparent: true, opacity: 0.1, depthWrite: false }));
-  add(room, new THREE.PlaneGeometry(WIN.w - 0.1, winH - 0.1), glass, WIN.x, winY, frameZ - 0.004, false);
-  // Appui de fenêtre intérieur.
-  add(room, new RoundedBoxGeometry(WIN.w + 0.12, 0.03, WALL + 0.06, 3, 0.008), trimPaint, WIN.x, WIN.y0 - 0.015, BACK - WALL / 2 + 0.03);
-  // Dehors : ciel d'après-midi et collines au loin, assez lumineux pour fleurir légèrement.
-  const outside = keep(new THREE.CanvasTexture(landscapeCanvas()));
-  outside.colorSpace = THREE.SRGBColorSpace;
-  const outsideMaterial = keep(new THREE.MeshBasicNodeMaterial());
-  outsideMaterial.colorNode = texture(outside, uv()).rgb.mul(1.9);
-  add(room, new THREE.PlaneGeometry(9, 4.5), outsideMaterial, WIN.x + 0.6, 1.4, BACK - 3.2, false);
-
-  // Suspension : fil textile, douille en bakélite et ampoule allumée (elle n'arrête pas sa propre lumière).
-  const cordMaterial = keep(new THREE.MeshStandardNodeMaterial({ color: 0x1c1a18, roughness: 0.8 }));
-  add(room, new THREE.CylinderGeometry(0.004, 0.004, RH - BULB.y - 0.06, 8), cordMaterial, BULB.x, (RH + BULB.y + 0.06) / 2, BULB.z, false);
-  add(room, new THREE.CylinderGeometry(0.035, 0.035, 0.015, 24), cordMaterial, BULB.x, RH - 0.0075, BULB.z, false);
-  add(room, new THREE.CylinderGeometry(0.018, 0.02, 0.05, 20), keep(new THREE.MeshStandardNodeMaterial({ color: 0x2a2622, roughness: 0.45 })), BULB.x, BULB.y + 0.055, BULB.z, false);
-  const bulbGlass = keep(new THREE.MeshStandardNodeMaterial({ color: 0xfff4e0, emissive: 0xffd9a8, emissiveIntensity: 6, roughness: 0.3 }));
-  const bulb = add(room, new THREE.SphereGeometry(0.03, 24, 16), bulbGlass, BULB.x, BULB.y, BULB.z, false);
-  bulb.scale.set(1, 1.25, 1);
 
   // --------------------------------------------------------------- bureau en hêtre
-  // Hêtre clair verni, comme la chaise et l'étagère : des meubles blonds des années 90.
-  const deskWood = (ru: number, rv: number, rotate = false, ox = 0) =>
-    pbr(beech, { ru, rv, rotate, ox, oy: ox * 0.7, ...BEECH, coat: 0.45, coatRoughness: 0.22, dust: 0.1 });
-  const desk = new THREE.Group();
+  // Hêtre clair verni, comme la chaise et l'étagère : des meubles blonds des années 90 (desk.ts).
+  const desk = buildDesk(keep, pbr, beech);
   desk.position.set(DESK.x, 0, DESK.z);
   desk.userData.zone = 'desk';
   scene.add(desk);
-  const { w: dw, d: dd, h: dh } = DESK;
-  add(desk, new RoundedBoxGeometry(dw, 0.03, dd, 3, 0.006), deskWood(dw, dd), 0, dh - 0.015, 0);
-  // Caisson à trois tiroirs à gauche, flanc plein à droite, voile de fond.
-  const cw = 0.42;
-  const cx = -dw / 2 + cw / 2 + 0.02;
-  const carcass = dh - 0.03;
-  for (const sx of [cx - cw / 2 + 0.01, cx + cw / 2 - 0.01]) add(desk, new RoundedBoxGeometry(0.02, carcass, dd - 0.04, 2, 0.003), deskWood(0.9, 0.4, true, sx), sx, carcass / 2, -0.01);
-  add(desk, new RoundedBoxGeometry(0.03, carcass, dd - 0.04, 2, 0.004), deskWood(0.9, 0.4, true, 0.3), dw / 2 - 0.04, carcass / 2, -0.01);
-  const spanL = cx + cw / 2;
-  const spanR = dw / 2 - 0.055;
-  add(desk, new RoundedBoxGeometry(spanR - spanL, 0.34, 0.015, 2, 0.003), deskWood(1.2, 0.5, false, 0.6), (spanL + spanR) / 2, dh - 0.03 - 0.17, -dd / 2 + 0.03);
-  add(desk, new RoundedBoxGeometry(spanR - spanL, 0.06, 0.02, 2, 0.003), deskWood(1.3, 0.1, false, 0.2), (spanL + spanR) / 2, dh - 0.06, dd / 2 - 0.04);
-  add(desk, new RoundedBoxGeometry(cw, 0.06, dd - 0.04, 2, 0.003), deskWood(0.6, 0.3, false, 0.9), cx, 0.03, -0.01);
-  const knobMaterial = deskWood(0.2, 0.2, true, 0.4);
-  const drawerH = (carcass - 0.08) / 3;
-  for (let k = 0; k < 3; k += 1) {
-    const y = 0.07 + drawerH * (k + 0.5);
-    add(desk, new RoundedBoxGeometry(cw - 0.03, drawerH - 0.012, 0.022, 3, 0.005), deskWood(0.6, 0.3, false, k * 0.31), cx, y, dd / 2 - 0.03);
-    const knob = add(desk, new THREE.LatheGeometry(knobProfile(), 24), knobMaterial, cx, y, dd / 2 - 0.019);
-    knob.rotation.x = Math.PI / 2;
-  }
 
   // Pile de magazines d'époque au coin droit du bureau, derrière le tapis de souris.
   const magazines = await magazinesLoad;
-  magazines.position.set(0.5, dh, -0.15);
+  magazines.position.set(0.5, DESK.h, -0.15);
   magazines.rotation.y = -0.12;
   desk.add(magazines);
 
   // --------------------------------------------------------------- chaise paysanne
-  const chair = new THREE.Group();
+  const chair = buildChair(keep, pbr, beech, maxAniso);
   chair.position.set(DESK.x + 0.18, 0, DESK.z + 0.62);
   chair.rotation.y = 0.32;
   chair.userData.zone = 'desk';
   scene.add(chair);
-  buildChair(chair);
 
   // --------------------------------------------------------------- affiche
   const poster = await posterLoad;
@@ -662,60 +500,6 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
   wake(5000);
   renderer.setAnimationLoop(frame);
 
-  // --------------------------------------------------------------- fabrication
-  function buildChair(parent: THREE.Group): void {
-    // Hêtre clair et ciré ; les pièces tournées suivent le fil du bois.
-    const beechWood = (seed: number) => pbr(beech, { ru: 0.5, rv: 0.12, rotate: true, ox: seed * 0.23, oy: seed * 0.17, coat: 0.25, coatRoughness: 0.35, ...BEECH, dust: 0.05 });
-    const seatY = 0.45;
-    // Pieds avant tournés.
-    for (const side of [-1, 1]) {
-      add(parent, new THREE.LatheGeometry(legProfile(seatY), 28), beechWood(side + 2), side * 0.2, 0, -0.17);
-    }
-    // Pieds arrière prolongés en montants, légèrement inclinés vers l'arrière.
-    const tilt = 0.09;
-    const backTop = 0.97;
-    for (const side of [-1, 1]) {
-      const post = add(parent, new THREE.LatheGeometry(postProfile(backTop), 28), beechWood(side + 5), side * 0.165, 0, 0.17);
-      post.rotation.x = tilt;
-    }
-    const backZ = (y: number) => 0.17 + Math.tan(tilt) * y;
-    // Traverses rondes sous l'assise et barreaux bas.
-    const rod = (a: THREE.Vector3, b: THREE.Vector3, r: number, seed: number) => {
-      const length = a.distanceTo(b);
-      const mesh = add(parent, new THREE.CylinderGeometry(r, r, length, 18), beechWood(seed), (a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
-      mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), b.clone().sub(a).normalize());
-    };
-    const v = (x: number, y: number, z: number) => new THREE.Vector3(x, y, z);
-    rod(v(-0.2, seatY - 0.02, -0.17), v(0.2, seatY - 0.02, -0.17), 0.013, 1);
-    rod(v(-0.165, seatY - 0.02, backZ(seatY - 0.02)), v(0.165, seatY - 0.02, backZ(seatY - 0.02)), 0.013, 2);
-    for (const side of [-1, 1]) {
-      rod(v(side * 0.2, seatY - 0.02, -0.17), v(side * 0.165, seatY - 0.02, backZ(seatY - 0.02)), 0.013, 3 + side);
-      rod(v(side * 0.2, 0.16, -0.17), v(side * 0.165, 0.16, backZ(0.16)), 0.011, 6 + side);
-      rod(v(side * 0.2, 0.27, -0.17), v(side * 0.165, 0.27, backZ(0.27)), 0.011, 8 + side);
-    }
-    rod(v(-0.2, 0.2, -0.17), v(0.2, 0.2, -0.17), 0.011, 11);
-    rod(v(-0.165, 0.2, backZ(0.2)), v(0.165, 0.2, backZ(0.2)), 0.011, 12);
-    // Dossier à trois barrettes cintrées.
-    for (const [k, y] of [0.63, 0.75, 0.87].entries()) {
-      const geometry = new THREE.BoxGeometry(0.33, 0.045, 0.012, 24, 1, 1);
-      const position = geometry.attributes.position as THREE.BufferAttribute;
-      for (let i = 0; i < position.count; i += 1) position.setZ(i, position.getZ(i) + (position.getX(i) ** 2) * 0.35);
-      geometry.computeVertexNormals();
-      const slat = add(parent, geometry, beechWood(14 + k), 0, y, backZ(y) - 0.02);
-      slat.rotation.x = tilt;
-    }
-    // Assise paillée : quatre triangles de cordes torsadées qui convergent au centre.
-    const rushCanvas = rushSeatCanvas(1024);
-    const rushMap = keep(new THREE.CanvasTexture(rushCanvas));
-    rushMap.colorSpace = THREE.SRGBColorSpace;
-    rushMap.anisotropy = maxAniso;
-    const rushNormal = keep(printNormal(rushCanvas, 5, 0.04, 1024));
-    for (const map of [rushMap, rushNormal]) { map.repeat.set(1 / 0.44, 1 / 0.38); map.offset.set(0.5, 0.5); }
-    const seat = new THREE.Shape([v(-0.22, 0.19, 0), v(0.22, 0.19, 0), v(0.18, -0.19, 0), v(-0.18, -0.19, 0)].map((p) => new THREE.Vector2(p.x, p.y)));
-    const seatGeometry = new THREE.ExtrudeGeometry(seat, { depth: 0.02, bevelEnabled: true, bevelThickness: 0.012, bevelSize: 0.012, bevelSegments: 4 });
-    seatGeometry.rotateX(-Math.PI / 2);
-    add(parent, seatGeometry, keep(new THREE.MeshPhysicalMaterial({ map: rushMap, normalMap: rushNormal, normalScale: new THREE.Vector2(1, 1), roughness: 0.78, sheen: 0.4, sheenColor: new THREE.Color(0xffe6a8) })), 0, seatY - 0.012, 0.0);
-  }
 
   // --------------------------------------------------------------- contrôleur
   const raycaster = new THREE.Raycaster();
@@ -821,105 +605,4 @@ export async function createRoomScene(options: RoomSceneOptions): Promise<RoomSc
 
 function clonePose(value: Pose): Pose {
   return { position: value.position.clone(), target: value.target.clone(), fov: value.fov };
-}
-
-// ============================================================================
-// Profils tournés et matières dessinées
-// ============================================================================
-
-// Pied avant : sabot, fût galbé, bague, puis tenon sous l'assise.
-function legProfile(height: number): THREE.Vector2[] {
-  const p = (r: number, y: number) => new THREE.Vector2(r, y);
-  return [p(0.001, 0), p(0.017, 0), p(0.019, 0.01), p(0.016, 0.04), p(0.015, 0.12), p(0.018, 0.2), p(0.02, 0.3),
-    p(0.024, 0.33), p(0.02, 0.345), p(0.021, 0.4), p(0.019, height - 0.01), p(0.001, height)];
-}
-
-// Montant arrière : comme le pied avant, prolongé jusqu'au chapeau du dossier.
-function postProfile(height: number): THREE.Vector2[] {
-  const p = (r: number, y: number) => new THREE.Vector2(r, y);
-  return [p(0.001, 0), p(0.017, 0), p(0.019, 0.01), p(0.016, 0.04), p(0.016, 0.3), p(0.02, 0.33), p(0.017, 0.345),
-    p(0.016, 0.6), p(0.017, height - 0.06), p(0.021, height - 0.04), p(0.016, height - 0.02), p(0.012, height - 0.004), p(0.001, height)];
-}
-
-// Bouton de tiroir tourné, posé sur l'axe y.
-function knobProfile(): THREE.Vector2[] {
-  const p = (r: number, y: number) => new THREE.Vector2(r, y);
-  return [p(0.001, 0), p(0.009, 0), p(0.006, 0.008), p(0.007, 0.014), p(0.015, 0.02), p(0.016, 0.026), p(0.012, 0.032), p(0.001, 0.034)];
-}
-
-// ----------------------------------------------------------------------------
-// Paille tressée vue de dessus : quatre triangles de cordes parallèles à chaque bord,
-// avec torsades, teintes de paille et joints sombres. Retour : toile carrée.
-// ----------------------------------------------------------------------------
-function rushSeatCanvas(size: number): HTMLCanvasElement {
-  const [canvas, context] = canvas2d(size, size);
-  const rand = seeded(41);
-  const half = size / 2;
-  const step = size / 64;
-  const tones = ['#c9a35a', '#b98f47', '#d4b06a', '#a87f3c', '#c29a50'];
-  for (let side = 0; side < 4; side += 1) {
-    context.save();
-    context.translate(half, half);
-    context.rotate((side * Math.PI) / 2);
-    context.translate(-half, -half);
-    // Triangle du bord haut : du coin gauche au coin droit, pointe au centre.
-    context.beginPath();
-    context.moveTo(0, 0); context.lineTo(size, 0); context.lineTo(half, half); context.closePath();
-    context.clip();
-    context.fillStyle = '#5a4120';
-    context.fillRect(0, 0, size, half);
-    for (let y = 0; y < half; y += step) {
-      context.fillStyle = tones[Math.floor(rand() * tones.length)] ?? '#c9a35a';
-      context.fillRect(0, y + step * 0.08, size, step * 0.84);
-      // Torsades : courts traits obliques plus sombres et reflets.
-      for (let x = 0; x < size; x += step * 0.9) {
-        context.globalAlpha = 0.35 + rand() * 0.25;
-        context.strokeStyle = '#6e5026';
-        context.lineWidth = step * 0.12;
-        context.beginPath(); context.moveTo(x, y + step * 0.1); context.lineTo(x + step * 0.5, y + step * 0.9); context.stroke();
-        context.globalAlpha = 0.25;
-        context.strokeStyle = '#f2dc9a';
-        context.lineWidth = step * 0.08;
-        context.beginPath(); context.moveTo(x + step * 0.3, y + step * 0.15); context.lineTo(x + step * 0.7, y + step * 0.8); context.stroke();
-      }
-      context.globalAlpha = 1;
-    }
-    context.restore();
-  }
-  // Diagonales : les cordes se croisent et laissent un sillon sombre.
-  context.strokeStyle = 'rgba(60,40,16,0.7)';
-  context.lineWidth = step * 0.25;
-  context.beginPath(); context.moveTo(0, 0); context.lineTo(size, size); context.moveTo(size, 0); context.lineTo(0, size); context.stroke();
-  return canvas;
-}
-
-// Ciel d'après-midi, collines et bosquets flous, vus par la fenêtre.
-function landscapeCanvas(): HTMLCanvasElement {
-  const [canvas, context] = canvas2d(1024, 512);
-  const sky = context.createLinearGradient(0, 0, 0, 512);
-  sky.addColorStop(0, '#7fa9d8'); sky.addColorStop(0.55, '#cfe0ee'); sky.addColorStop(0.72, '#f3eee2'); sky.addColorStop(1, '#f3eee2');
-  context.fillStyle = sky;
-  context.fillRect(0, 0, 1024, 512);
-  const rand = seeded(5);
-  context.filter = 'blur(6px)';
-  for (let i = 0; i < 14; i += 1) {
-    context.globalAlpha = 0.5;
-    context.fillStyle = '#ffffff';
-    context.beginPath(); context.ellipse(rand() * 1024, 40 + rand() * 160, 60 + rand() * 120, 14 + rand() * 20, 0, 0, Math.PI * 2); context.fill();
-  }
-  context.globalAlpha = 1;
-  context.filter = 'blur(3px)';
-  context.fillStyle = '#8fa98a';
-  context.beginPath(); context.moveTo(0, 360);
-  for (let x = 0; x <= 1024; x += 32) context.lineTo(x, 340 + Math.sin(x * 0.006) * 24 + Math.sin(x * 0.021) * 8);
-  context.lineTo(1024, 512); context.lineTo(0, 512); context.fill();
-  context.fillStyle = '#5f7f55';
-  for (let i = 0; i < 30; i += 1) {
-    const x = rand() * 1024; const r = 18 + rand() * 30;
-    context.beginPath(); context.arc(x, 372 + rand() * 30 - r * 0.3, r, 0, Math.PI * 2); context.fill();
-  }
-  context.fillStyle = '#6f8c5e';
-  context.fillRect(0, 400, 1024, 112);
-  context.filter = 'none';
-  return canvas;
 }
